@@ -1727,6 +1727,7 @@ static void MakeHexData()
 // platform facts (-facts): API availability, charsets, file semantics, chunked I/O, byte loops
 
 static HFONT g_csFont[3];
+static int g_chunksOnly;
 static const int g_csSet[3] = { ANSI_CHARSET, RUSSIAN_CHARSET, EASTEUROPE_CHARSET };
 static const char *g_csName[3] = { "ANSI_CHARSET", "RUSSIAN_CHARSET", "EASTEUROPE_CHARSET" };
 static const WCHAR g_wCyr[] = { 0x041F,0x0440,0x0438,0x0432,0x0435,0x0442,',',' ',0x043C,0x0438,0x0440,'!',' ',0x0416,0x0414,0x042F,0 };
@@ -2125,6 +2126,21 @@ static void FactChunks(const char *dir, const char *label)
         }
         Log("\n");
     }
+    // fresh (uncached) 2 MB file per chunk size: write, then a single read pass
+    Log("  fresh 2 MB file per chunk size, first read:");
+    for (i = 0; i < 4; i++) {
+        char fp2[MAX_PATH];
+        sprintf(fp2, "%s\\FRESH%d.TXT", dir, i);
+        WriteTest(fp2, 2u << 20);
+        h = CreateFile(fp2, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+        t0 = Now(); total = 0;
+        while (ReadFile(h, buf, cs[i], &got, NULL) && got) total += got;
+        t = Now() - t0;
+        CloseHandle(h);
+        DeleteFile(fp2);
+        Log("  %3lu KB: %6.2f MB/s", cs[i] >> 10, MBs(total, t));
+    }
+    Log("\n");
     h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     g_seed = 4242;
     t0 = Now();
@@ -2404,6 +2420,7 @@ static void FactsMain()
     CreateDirectory(cdir, NULL);
     CreateDirectory(mdir, NULL);
     Log("edprobe platform facts\n");
+    if (g_chunksOnly) { FactChunks(cdir, "C: local"); FactChunks(mdir, "M: Samba"); RemoveDirectory(mdir); RemoveDirectory(cdir); return; }
     FactApi();
     FactCharsets();
     g_view = V_CHARSET; g_target = T_DIRECT;
@@ -2446,6 +2463,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE hp, LPSTR cmd, int show)
 
     for (i = 1; i < __argc; i++) {
         if (!lstrcmpi(__argv[i], "-bench")) { doRender = doIo = 1; }
+        else if (!lstrcmpi(__argv[i], "-chunks")) { doFacts = 1; g_chunksOnly = 1; sprintf(g_logPath, "%s\\CHUNKS.TXT", g_exeDir); }
         else if (!lstrcmpi(__argv[i], "-facts")) { doFacts = 1; sprintf(g_logPath, "%s\\FACTS.TXT", g_exeDir); }
         else if (!lstrcmpi(__argv[i], "-hold") && i + 2 < __argc) {
             HANDLE hh = CreateFile(__argv[i + 1], GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);

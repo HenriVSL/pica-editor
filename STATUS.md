@@ -19,4 +19,4 @@ A robust Notepad++-style text editor for Windows 98 SE with hex editing built in
 |---|---|---|
 | Architecture research (buffer, big files, Win98 Unicode/encodings, regex, undo, lexing) | `docs/research/ARCH.md` | done |
 | Feature / UX research (Notepad++, hex editors, period editors) | `docs/research/UX.md` | done |
-| GDI text rendering + file I/O probe on VM A | `probe/RESULTS.md` | running |
+| GDI text rendering + file I/O probe on VM A | `probe/RESULTS.md` | done |
