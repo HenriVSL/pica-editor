@@ -1,0 +1,10 @@
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.RES
+*.res
+obj/
+build/
+.DS_Store
+probe/*.TXT
