@@ -1,0 +1,12 @@
+// dlg_file.rc2 - dialog templates. Placeholders from T00. Owner after Wave 0: T09. CRLF, ASCII.
+
+// Save As template child (OFN_ENABLETEMPLATE | OFN_ENABLEHOOK): Encoding and Line endings combos (12.2)
+IDD_SAVEAS_EXTRA DIALOG DISCARDABLE 0, 0, 280, 22
+STYLE DS_3DLOOK | DS_CONTROL | WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "&Encoding:",IDC_SAVEAS_ENC_LABEL,7,6,40,8
+    COMBOBOX        IDC_SAVEAS_ENC,50,4,90,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Line endings:",IDC_SAVEAS_EOL_LABEL,150,6,50,8
+    COMBOBOX        IDC_SAVEAS_EOL,202,4,70,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+END

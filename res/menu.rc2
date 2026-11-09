@@ -1,0 +1,251 @@
+// menu.rc2 - main menu, tab context menu, accelerators (DESIGN 15.4, 15.5). CRLF, ASCII.
+// Owner after Wave 0: T15 (T07 fixes only). Rules: no Ctrl+Alt+<digit>/E/+/<> accelerators (AltGr), no plain Del/Ins.
+
+IDR_MENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New\tCtrl+N",                 IDM_FILE_NEW
+        MENUITEM "&Open...\tCtrl+O",             IDM_FILE_OPEN
+        MENUITEM "Re&vert to Saved",             IDM_FILE_REVERT
+        MENUITEM SEPARATOR
+        MENUITEM "&Save\tCtrl+S",                IDM_FILE_SAVE
+        MENUITEM "Save &As...\tCtrl+Alt+S",      IDM_FILE_SAVEAS
+        MENUITEM "Save A&ll\tCtrl+Shift+S",      IDM_FILE_SAVEALL
+        MENUITEM SEPARATOR
+        MENUITEM "&Close\tCtrl+W",               IDM_FILE_CLOSE
+        MENUITEM "Clos&e All",                   IDM_FILE_CLOSEALL
+        MENUITEM "Close O&thers",                IDM_FILE_CLOSEOTHERS
+        MENUITEM SEPARATOR
+        MENUITEM "(no recent files)",            IDM_MRU_FIRST, GRAYED
+        MENUITEM "Clear Recent &List",           IDM_MRU_CLEAR
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit\tAlt+F4",                IDM_FILE_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Undo\tCtrl+Z",                IDM_EDIT_UNDO
+        MENUITEM "&Redo\tCtrl+Y",                IDM_EDIT_REDO
+        MENUITEM SEPARATOR
+        MENUITEM "Cu&t\tCtrl+X",                 IDM_EDIT_CUT
+        MENUITEM "&Copy\tCtrl+C",                IDM_EDIT_COPY
+        MENUITEM "&Paste\tCtrl+V",               IDM_EDIT_PASTE
+        MENUITEM "&Delete\tDel",                 IDM_EDIT_DELETE
+        MENUITEM "Select &All\tCtrl+A",          IDM_EDIT_SELECTALL
+        MENUITEM SEPARATOR
+        POPUP "&Line"
+        BEGIN
+            MENUITEM "&Duplicate\tCtrl+D",       IDM_LINE_DUP
+            MENUITEM "De&lete Line\tCtrl+L",     IDM_LINE_DEL
+            MENUITEM "Move &Up\tCtrl+Shift+Up",  IDM_LINE_UP
+            MENUITEM "Move Do&wn\tCtrl+Shift+Down", IDM_LINE_DOWN
+        END
+        MENUITEM "Toggle Co&mment\tCtrl+Q",      IDM_EDIT_COMMENT
+        POPUP "C&ase"
+        BEGIN
+            MENUITEM "&UPPERCASE\tCtrl+Shift+U", IDM_EDIT_UPPER
+            MENUITEM "&lowercase\tCtrl+U",       IDM_EDIT_LOWER
+        END
+        MENUITEM "&Indent\tTab",                 IDM_EDIT_INDENT
+        MENUITEM "U&nindent\tShift+Tab",         IDM_EDIT_UNINDENT
+        MENUITEM SEPARATOR
+        MENUITEM "Insert/&Overwrite\tIns",       IDM_EDIT_OVERWRITE
+    END
+    POPUP "&Search"
+    BEGIN
+        MENUITEM "&Find...\tCtrl+F",             IDM_SEARCH_FIND
+        MENUITEM "Find &Next\tF3",               IDM_SEARCH_NEXT
+        MENUITEM "Find &Previous\tShift+F3",     IDM_SEARCH_PREV
+        MENUITEM "Find &Selection\tCtrl+F3",     IDM_SEARCH_SELNEXT
+        MENUITEM "Find Selection &Backwards\tCtrl+Shift+F3", IDM_SEARCH_SELPREV
+        MENUITEM "&Incremental Search\tCtrl+I",  IDM_SEARCH_ISEARCH
+        MENUITEM "&Replace...\tCtrl+H",          IDM_SEARCH_REPLACE
+        MENUITEM "Find in Fi&les...\tCtrl+Shift+F", IDM_SEARCH_FIF
+        MENUITEM "Ne&xt Result\tF4",             IDM_SEARCH_RESNEXT
+        MENUITEM "Previous Res&ult\tShift+F4",   IDM_SEARCH_RESPREV
+        MENUITEM "&Clear Marks",                 IDM_SEARCH_CLEARMARKS
+        MENUITEM SEPARATOR
+        MENUITEM "&Go To...\tCtrl+G",            IDM_SEARCH_GOTO
+        MENUITEM "Go to &Matching Brace\tCtrl+B", IDM_SEARCH_BRACE
+        MENUITEM SEPARATOR
+        POPUP "Boo&kmarks"
+        BEGIN
+            MENUITEM "&Toggle\tCtrl+F2",         IDM_BM_TOGGLE
+            MENUITEM "&Next\tF2",                IDM_BM_NEXT
+            MENUITEM "&Previous\tShift+F2",      IDM_BM_PREV
+            MENUITEM "&Clear All",               IDM_BM_CLEAR
+        END
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Hex View\tCtrl+Shift+H",      IDM_VIEW_HEX
+        MENUITEM "Data &Inspector",              IDM_VIEW_INSPECTOR
+        MENUITEM SEPARATOR
+        MENUITEM "&Word Wrap",                   IDM_VIEW_WRAP
+        MENUITEM "Show White&space and Line Endings", IDM_VIEW_SHOWWS
+        MENUITEM "Line &Numbers",                IDM_VIEW_LINENUM
+        MENUITEM SEPARATOR
+        MENUITEM "&Toolbar",                     IDM_VIEW_TOOLBAR
+        MENUITEM "Status &Bar",                  IDM_VIEW_STATUSBAR
+        MENUITEM "Find &Results",                IDM_VIEW_RESULTS
+    END
+    POPUP "&Document"
+    BEGIN
+        POPUP "&Syntax"
+        BEGIN
+            MENUITEM "(&Auto)",                  IDM_LANG_AUTO
+            MENUITEM "&Plain Text",              IDM_LANG_PLAIN
+            MENUITEM SEPARATOR
+            MENUITEM "&C/C++",                   IDM_LANG_CPP
+            MENUITEM "&Resource Script",         IDM_LANG_RC
+            MENUITEM "&Makefile",                IDM_LANG_MAKE
+            MENUITEM "&Batch",                   IDM_LANG_BAT
+            MENUITEM "&INI",                     IDM_LANG_INI
+            MENUITEM "A&ssembly",                IDM_LANG_ASM
+            MENUITEM "P&ython",                  IDM_LANG_PYTHON
+            MENUITEM "&HTML",                    IDM_LANG_HTML
+            MENUITEM "&JavaScript",              IDM_LANG_JS
+            MENUITEM "C&SS",                     IDM_LANG_CSS
+            MENUITEM "&XML",                     IDM_LANG_XML
+            MENUITEM "Mar&kdown",                IDM_LANG_MD
+            MENUITEM "&Diff",                    IDM_LANG_DIFF
+        END
+        POPUP "&Encoding"
+        BEGIN
+            POPUP "&Reload as"
+            BEGIN
+                MENUITEM "&ANSI",                IDM_ENC_RELOAD_ANSI
+                MENUITEM "&OEM (DOS)",           IDM_ENC_RELOAD_OEM
+                MENUITEM "UTF-&8",               IDM_ENC_RELOAD_UTF8
+                MENUITEM "UTF-16 &LE",           IDM_ENC_RELOAD_UTF16LE
+                MENUITEM "UTF-16 &BE",           IDM_ENC_RELOAD_UTF16BE
+                POPUP "&Code page"
+                BEGIN
+                    MENUITEM "Windows-1250 (Central European)", IDM_ENC_RELOAD_CP_1250
+                    MENUITEM "Windows-1251 (Cyrillic)",         IDM_ENC_RELOAD_CP_1251
+                    MENUITEM "Windows-1253 (Greek)",            IDM_ENC_RELOAD_CP_1253
+                    MENUITEM "Windows-1254 (Turkish)",          IDM_ENC_RELOAD_CP_1254
+                    MENUITEM "Windows-1257 (Baltic)",           IDM_ENC_RELOAD_CP_1257
+                    MENUITEM "OEM 437 (US)",                    IDM_ENC_RELOAD_CP_437
+                    MENUITEM "OEM 850 (Western European)",      IDM_ENC_RELOAD_CP_850
+                    MENUITEM "OEM 852 (Central European)",      IDM_ENC_RELOAD_CP_852
+                    MENUITEM "OEM 866 (Cyrillic)",              IDM_ENC_RELOAD_CP_866
+                    MENUITEM "KOI8-R",                          IDM_ENC_RELOAD_CP_KOI8R
+                END
+            END
+            MENUITEM SEPARATOR
+            MENUITEM "&ANSI",                    IDM_ENC_CONV_ANSI
+            MENUITEM "UTF-&8",                   IDM_ENC_CONV_UTF8
+            MENUITEM "UTF-8 with &BOM",          IDM_ENC_CONV_UTF8BOM
+            MENUITEM "UTF-16 &LE (BOM)",         IDM_ENC_CONV_UTF16LE
+            MENUITEM "UTF-16 B&E (BOM)",         IDM_ENC_CONV_UTF16BE
+        END
+        POPUP "&Line Endings"
+        BEGIN
+            MENUITEM "&Windows (CRLF)",          IDM_EOL_CRLF
+            MENUITEM "&Unix (LF)",               IDM_EOL_LF
+            MENUITEM "&Mac (CR)",                IDM_EOL_CR
+        END
+        POPUP "&Tabs"
+        BEGIN
+            MENUITEM "Width &2",                 IDM_TAB_2
+            MENUITEM "Width &4",                 IDM_TAB_4
+            MENUITEM "Width &8",                 IDM_TAB_8
+            MENUITEM "Insert &Spaces",           IDM_TAB_SPACES
+        END
+        MENUITEM SEPARATOR
+        MENUITEM "&Read-Only",                   IDM_DOC_READONLY
+        MENUITEM "&Properties...",               IDM_DOC_PROPERTIES
+    END
+    POPUP "&Tools"
+    BEGIN
+        MENUITEM "&Options...",                  IDM_TOOLS_OPTIONS
+    END
+    POPUP "&Window"
+    BEGIN
+        MENUITEM "&Next Tab\tCtrl+Tab",          IDM_WIN_NEXT
+        MENUITEM "&Previous Tab\tCtrl+Shift+Tab", IDM_WIN_PREV
+        MENUITEM SEPARATOR
+        MENUITEM "(no documents)",               IDM_WIN_FIRST, GRAYED
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Keyboard Shortcuts\tF1",      IDM_HELP_KEYS
+        MENUITEM "&Regular Expressions",         IDM_HELP_REGEX
+        MENUITEM SEPARATOR
+        MENUITEM "&About Pica",                  IDM_HELP_ABOUT
+    END
+END
+
+IDR_TABMENU MENU
+BEGIN
+    POPUP "Tab"
+    BEGIN
+        MENUITEM "&Close",                       IDM_TAB_CLOSE
+        MENUITEM "Close &Others",                IDM_TAB_CLOSEOTHERS
+        MENUITEM SEPARATOR
+        MENUITEM "Copy Full &Path",              IDM_TAB_COPYPATH
+        MENUITEM "Open Containing &Folder",      IDM_TAB_OPENFOLDER
+    END
+END
+
+IDA_MAIN ACCELERATORS
+BEGIN
+    "N",        IDM_FILE_NEW,          VIRTKEY, CONTROL
+    "O",        IDM_FILE_OPEN,         VIRTKEY, CONTROL
+    "S",        IDM_FILE_SAVE,         VIRTKEY, CONTROL
+    "S",        IDM_FILE_SAVEAS,       VIRTKEY, CONTROL, ALT
+    "S",        IDM_FILE_SAVEALL,      VIRTKEY, CONTROL, SHIFT
+    "W",        IDM_FILE_CLOSE,        VIRTKEY, CONTROL
+    VK_F4,      IDM_FILE_CLOSE,        VIRTKEY, CONTROL
+    "Z",        IDM_EDIT_UNDO,         VIRTKEY, CONTROL
+    VK_BACK,    IDM_EDIT_UNDO,         VIRTKEY, ALT
+    "Y",        IDM_EDIT_REDO,         VIRTKEY, CONTROL
+    "Z",        IDM_EDIT_REDO,         VIRTKEY, CONTROL, SHIFT
+    "X",        IDM_EDIT_CUT,          VIRTKEY, CONTROL
+    VK_DELETE,  IDM_EDIT_CUT,          VIRTKEY, SHIFT
+    "C",        IDM_EDIT_COPY,         VIRTKEY, CONTROL
+    VK_INSERT,  IDM_EDIT_COPY,         VIRTKEY, CONTROL
+    "V",        IDM_EDIT_PASTE,        VIRTKEY, CONTROL
+    VK_INSERT,  IDM_EDIT_PASTE,        VIRTKEY, SHIFT
+    "A",        IDM_EDIT_SELECTALL,    VIRTKEY, CONTROL
+    "D",        IDM_LINE_DUP,          VIRTKEY, CONTROL
+    "L",        IDM_LINE_DEL,          VIRTKEY, CONTROL
+    "L",        IDM_LINE_DEL,          VIRTKEY, CONTROL, SHIFT
+    VK_UP,      IDM_LINE_UP,           VIRTKEY, CONTROL, SHIFT
+    VK_DOWN,    IDM_LINE_DOWN,         VIRTKEY, CONTROL, SHIFT
+    "Q",        IDM_EDIT_COMMENT,      VIRTKEY, CONTROL
+    "U",        IDM_EDIT_UPPER,        VIRTKEY, CONTROL, SHIFT
+    "U",        IDM_EDIT_LOWER,        VIRTKEY, CONTROL
+    "F",        IDM_SEARCH_FIND,       VIRTKEY, CONTROL
+    "H",        IDM_SEARCH_REPLACE,    VIRTKEY, CONTROL
+    "F",        IDM_SEARCH_FIF,        VIRTKEY, CONTROL, SHIFT
+    VK_F3,      IDM_SEARCH_NEXT,       VIRTKEY
+    VK_F3,      IDM_SEARCH_PREV,       VIRTKEY, SHIFT
+    VK_F3,      IDM_SEARCH_SELNEXT,    VIRTKEY, CONTROL
+    VK_F3,      IDM_SEARCH_SELPREV,    VIRTKEY, CONTROL, SHIFT
+    "I",        IDM_SEARCH_ISEARCH,    VIRTKEY, CONTROL
+    VK_F4,      IDM_SEARCH_RESNEXT,    VIRTKEY
+    VK_F4,      IDM_SEARCH_RESPREV,    VIRTKEY, SHIFT
+    "G",        IDM_SEARCH_GOTO,       VIRTKEY, CONTROL
+    "B",        IDM_SEARCH_BRACE,      VIRTKEY, CONTROL
+    0xDD,       IDM_SEARCH_BRACE,      VIRTKEY, CONTROL
+    VK_F2,      IDM_BM_TOGGLE,         VIRTKEY, CONTROL
+    VK_F2,      IDM_BM_NEXT,           VIRTKEY
+    VK_F2,      IDM_BM_PREV,           VIRTKEY, SHIFT
+    "H",        IDM_VIEW_HEX,          VIRTKEY, CONTROL, SHIFT
+    VK_TAB,     IDM_WIN_NEXT,          VIRTKEY, CONTROL
+    VK_NEXT,    IDM_WIN_NEXT,          VIRTKEY, CONTROL
+    VK_TAB,     IDM_WIN_PREV,          VIRTKEY, CONTROL, SHIFT
+    VK_PRIOR,   IDM_WIN_PREV,          VIRTKEY, CONTROL
+    VK_F1,      IDM_HELP_KEYS,         VIRTKEY
+END
+
+IDA_FIND ACCELERATORS
+BEGIN
+    VK_F3,      IDM_SEARCH_NEXT,       VIRTKEY
+    VK_F3,      IDM_SEARCH_PREV,       VIRTKEY, SHIFT
+    VK_F3,      IDM_SEARCH_SELNEXT,    VIRTKEY, CONTROL
+    VK_F4,      IDM_SEARCH_RESNEXT,    VIRTKEY
+    VK_F4,      IDM_SEARCH_RESPREV,    VIRTKEY, SHIFT
+END

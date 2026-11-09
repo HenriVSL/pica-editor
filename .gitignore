@@ -4,7 +4,12 @@
 *.ilk
 *.RES
 *.res
+*.pch
+*.idb
 obj/
 build/
+tests/build/
+tests/tmp/
+release/*/
 .DS_Store
 probe/*.TXT

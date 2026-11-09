@@ -1,0 +1,43 @@
+// dlg_opts.rc2 - dialog templates. Placeholders from T00. Owner after Wave 0: T12. CRLF, ASCII.
+
+// Options property sheet pages (15.8): child dialogs for PropertySheetA
+IDD_OPT_GENERAL DIALOG DISCARDABLE 0, 0, 250, 180
+STYLE DS_3DLOOK | WS_CHILD | WS_CAPTION
+CAPTION "General"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Placeholder (not implemented yet).",-1,7,7,236,20
+END
+
+IDD_OPT_EDITOR DIALOG DISCARDABLE 0, 0, 250, 180
+STYLE DS_3DLOOK | WS_CHILD | WS_CAPTION
+CAPTION "Editor"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Placeholder (not implemented yet).",-1,7,7,236,20
+END
+
+IDD_OPT_FILES DIALOG DISCARDABLE 0, 0, 250, 180
+STYLE DS_3DLOOK | WS_CHILD | WS_CAPTION
+CAPTION "Files"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Placeholder (not implemented yet).",-1,7,7,236,20
+END
+
+IDD_OPT_COLORS DIALOG DISCARDABLE 0, 0, 250, 180
+STYLE DS_3DLOOK | WS_CHILD | WS_CAPTION
+CAPTION "Colours"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Placeholder (not implemented yet).",-1,7,7,236,20
+END
+
+IDD_OPT_HEX DIALOG DISCARDABLE 0, 0, 250, 180
+STYLE DS_3DLOOK | WS_CHILD | WS_CAPTION
+CAPTION "Hex"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Placeholder (not implemented yet).",-1,7,7,236,20
+END
+

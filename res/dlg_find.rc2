@@ -1,0 +1,12 @@
+// dlg_find.rc2 - dialog templates. Placeholders from T00. Owner after Wave 0: T11. CRLF, ASCII.
+
+IDD_FIND DIALOG DISCARDABLE 0, 0, 300, 120
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Find"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Placeholder (not implemented yet).",-1,7,7,286,20
+    DEFPUSHBUTTON   "OK",IDOK,186,99,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,243,99,50,14
+END
+
