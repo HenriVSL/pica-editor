@@ -43,9 +43,15 @@ struct Tab {
   u32 backup_gen, backup_seq, dirty_since_ms; u8 has_backup, backup_note_shown, pad[2];
   u32 io_pending;                         // I/O jobs queued for this tab
 };
-Tab* tab_new(Document* doc);             // takes ownership of doc; creates the Highlighter, binds lines/marks; new id
+// Takes ownership of doc on success; creates the Highlighter, binds lines/marks; new id. On failure (no memory) it
+// returns NULL and doc stays the caller's (delete it).
+Tab* tab_new(Document* doc);
 void tab_free(Tab* t);                   // unbinds and frees everything (tab must be out of the bar, no pending I/O)
 Tab* tab_find_path(const char* path);    // open tab with this full path (case-insensitive), or NULL
 void tab_title(Tab* t, char* out, u32 cap);   // "name.ext" or "new 3"
+// Call after setting t->lang: when cfg.use_lang_tabs is on and the tab has a language, copies the language's tab width
+// and tabs/spaces choice into t->tv (use_tabs 2 = the global use_spaces) and repaints the text view if t is active.
+// Returns 1 if t->tv changed. Does nothing for plain text or with the option off.
+int  tab_apply_lang_tabs(Tab* t);
 
 #endif

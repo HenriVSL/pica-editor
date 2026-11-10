@@ -70,6 +70,7 @@
 #define IDM_EDIT_INDENT            40117
 #define IDM_EDIT_UNINDENT          40118
 #define IDM_EDIT_OVERWRITE         40119
+#define IDM_LINE_CUT               40120   // Ctrl+L (Notepad++ / VC6 LineCut); Ctrl+Shift+L = IDM_LINE_DEL
 #define IDM_SEARCH_FIND            40200
 #define IDM_SEARCH_NEXT            40201
 #define IDM_SEARCH_PREV            40202

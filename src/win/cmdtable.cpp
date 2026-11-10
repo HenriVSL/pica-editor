@@ -1,11 +1,17 @@
 // cmdtable.cpp - command routing: IDM_* -> handler and menu state (DESIGN 15.1, 15.4). T00: complete table.
 // Also the Help commands (T15). Owner after Wave 0: T15.
 #include <windows.h>
+#include <string.h>
 #include "app.h"
 #include "tab.h"
 #include "cmds.h"
 #include "ui.h"
 #include "resource.h"
+#include "docio.h"
+#include "views.h"
+#include "dialogs.h"
+#include "fsys.h"
+#include "estr.h"
 
 static const CmdEntry g_cmds[] = {
   { IDM_FILE_NEW, 1, cmd_file_new, 0, 0, 0, "cmd_file_new" },
@@ -29,6 +35,7 @@ static const CmdEntry g_cmds[] = {
   { IDM_EDIT_SELECTALL, 1, cmd_edit_selectall, 0, cmdstate_hastab, 0, "cmd_edit_selectall" },
   { IDM_LINE_DUP, 1, cmd_line_dup, 0, cmdstate_edit_lineops, 0, "cmd_line_dup" },
   { IDM_LINE_DEL, 1, cmd_line_del, 0, cmdstate_edit_lineops, 0, "cmd_line_del" },
+  { IDM_LINE_CUT, 1, cmd_line_cut, 0, cmdstate_edit_lineops, 0, "cmd_line_cut" },
   { IDM_LINE_UP, 1, cmd_line_up, 0, cmdstate_edit_lineops, 0, "cmd_line_up" },
   { IDM_LINE_DOWN, 1, cmd_line_down, 0, cmdstate_edit_lineops, 0, "cmd_line_down" },
   { IDM_EDIT_COMMENT, 1, cmd_edit_comment, 0, cmdstate_edit_lineops, 0, "cmd_edit_comment" },
@@ -169,9 +176,146 @@ UINT cmdstate_hastab(void)
   return app_active() ? 0 : MF_GRAYED;
 }
 
-void cmd_help_show(int section) { (void)section; ui_notimpl("cmd_help_show"); }
+// ---- Help (T15) ----
+// The help text is RCDATA IDR_HELP (src/help/help.md). It is written to <cfg_dir>\Pica Help.md (or %TEMP% when the
+// settings folder is not writable) and opened as an ordinary read-only tab, so it gets Markdown colouring, search,
+// session restore and Ctrl+W like any file. The file is rewritten only when no tab shows it and its bytes differ.
+
+static const char* const k_help_heading[HELP_SECTIONS] = {
+  "# Pica Help", "## Keyboard shortcuts", "## Regular expressions", "## Encodings and line endings",
+  "## The hex view", "## Files, settings and backups", "## Large files"
+};
+static const char k_help_name[] = "Pica Help.md";
+
+static int help_bytes(const u8** p, u32* n)
+{
+  HRSRC r = FindResourceA(g_app.hinst, MAKEINTRESOURCEA(IDR_HELP), (LPCSTR)RT_RCDATA);
+  HGLOBAL g;
+  *p = 0; *n = 0;
+  if (!r) return E_NOTFOUND;
+  g = LoadResource(g_app.hinst, r);
+  if (!g) return E_NOTFOUND;
+  *p = (const u8*)LockResource(g);
+  *n = (u32)SizeofResource(g_app.hinst, r);
+  return *p && *n ? E_OK : E_NOTFOUND;
+}
+
+static int help_same(const char* path, const u8* p, u32 n)
+{
+  FileSys* fs = fs_os();
+  FsFile f;
+  u32 lo = 0, hi = 0, got = 0;
+  EBytes b;
+  int same = 0;
+  if (fs->open(path, FS_READ | FS_SHARE_ALL, &f) != E_OK) return 0;
+  if (fs->size(f, &lo, &hi) == E_OK && !hi && lo == n && b.resize(n) == E_OK &&
+      fs->read_at(f, 0, 0, b.data(), n, &got) == E_OK && got == n)
+    same = memcmp(b.data(), p, n) == 0;
+  fs->close(f);
+  return same;
+}
+
+static int help_write(const char* path, const u8* p, u32 n)
+{
+  FileSys* fs = fs_os();
+  FsFile f;
+  int rc;
+  if (help_same(path, p, n)) return E_OK;
+  SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
+  rc = fs->open(path, FS_WRITE, &f);
+  if (rc != E_OK) return rc;
+  rc = fs->write(f, p, n);
+  if (rc == E_OK) rc = fs->flush(f);
+  fs->close(f);
+  if (rc != E_OK) fs->remove(path);
+  return rc;
+}
+
+// Finds the help tab (any folder), else writes the file and opens it read-only.
+static Tab* help_open(void)
+{
+  char path[300], dir[260];
+  const u8* p;
+  u32 n, k;
+  int i, rc;
+  Tab* t;
+  OpenOpts o;
+  for (i = 0; i < app_tab_count(); i++) {
+    t = app_tab(i);
+    if (t && !t->untitled && es_icmp(ui_path_name(t->path), k_help_name) == 0) { app_activate(i); return t; }
+  }
+  if (help_bytes(&p, &n) != E_OK) { ui_error("The help text is missing from pica.exe."); return 0; }
+  ui_path_join(g_app.cfg_dir, k_help_name, path, sizeof(path));
+  rc = help_write(path, p, n);
+  if (rc != E_OK) {
+    k = GetTempPathA(sizeof(dir), dir);
+    if (k && k < sizeof(dir)) {
+      if (k > 3 && dir[k - 1] == '\\') dir[k - 1] = 0;
+      ui_path_join(dir, k_help_name, path, sizeof(path));
+      rc = help_write(path, p, n);
+    }
+  }
+  if (rc != E_OK) { ui_error("Could not write the help file %s (%s).", path, e_errname(rc)); return 0; }
+  docio_default_opts(&o);
+  o.read_only = 1;
+  o.from_session = 1;                    // no MRU entry, no reuse of an empty "new 1"
+  t = 0;
+  rc = docio_open(path, &o, &t);
+  if (rc != E_OK || !t) { ui_error("Could not open the help file %s (%s).", path, e_errname(rc)); return 0; }
+  return t;
+}
+
+// Offset of the line that starts with the heading (exact line), or EPOS_NONE.
+static epos help_find(Tab* t, const char* heading)
+{
+  Document* d = t->doc;
+  u32 hl = es_len(heading), line, nl = d->line_count();
+  char buf[64];
+  for (line = 0; line < nl; line++) {
+    epos a = d->line_start(line), b = d->line_end(line);
+    if (b - a != hl || hl >= sizeof(buf)) continue;
+    if (d->read(a, (u8*)buf, hl) != E_OK) continue;
+    if (memcmp(buf, heading, hl) == 0) return a;
+  }
+  return EPOS_NONE;
+}
+
+static void help_place(Tab* t, epos pos)
+{
+  t->sel.anchor = t->sel.caret = pos;
+  t->tv.top_line = t->doc->line_of(pos);  // the view clamps it near the end
+  t->tv.top_subrow = 0;
+  t->tv.hscroll = 0;
+  t->tv.desired_cell = 0xFFFFFFFF;
+}
+
+void cmd_help_show(int section)
+{
+  Tab* t;
+  epos pos;
+  if (section < 0 || section >= HELP_SECTIONS) section = HELP_TOP;
+  t = help_open();
+  if (!t || !t->doc) return;
+  pos = help_find(t, k_help_heading[section]);
+  if (pos == EPOS_NONE) pos = t->doc->text_origin();
+  // A shown text view keeps its state in the tab: flush it, set the position, attach again. Otherwise (hex view or
+  // another tab shown) app_activate attaches the text view, which reads the same fields.
+  if (t == app_active() && t->view == VIEW_TEXT && g_app.textview) {
+    textview_attach(g_app.textview, 0);
+    help_place(t, pos);
+    textview_attach(g_app.textview, t);
+    if (IsWindowVisible(g_app.textview)) SetFocus(g_app.textview);
+  } else {
+    if (t == app_active() && t->view == VIEW_HEX && g_app.hexview) hexview_attach(g_app.hexview, 0);
+    t->view = VIEW_TEXT;
+    help_place(t, pos);
+    app_activate(app_tab_index(t));
+    if (g_app.textview && IsWindowVisible(g_app.textview)) SetFocus(g_app.textview);
+  }
+  app_update_status();
+}
 
 // ---- Help commands (T15) ----
-void cmd_help_keys(void) { ui_notimpl("cmd_help_keys"); }
-void cmd_help_regex(void) { ui_notimpl("cmd_help_regex"); }
-void cmd_help_about(void) { ui_notimpl("cmd_help_about"); }
+void cmd_help_keys(void) { cmd_help_show(HELP_KEYS); }
+void cmd_help_regex(void) { cmd_help_show(HELP_REGEX); }
+void cmd_help_about(void) { dlg_about(); }

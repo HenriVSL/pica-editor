@@ -1599,3 +1599,417 @@ VirtualAlloc for big blocks.
   raw prefilter: only lines containing that brace kind are decoded); T08 already skips it in large mode.
 - The Options sheet title bar shows the Win98 "?" context-help button (PSH_NOCONTEXTHELP needs comctl32 5.80).
 - About shows the VM's build date (__DATE__ from VM A's clock, ~14 h behind).
+
+## I1 Integration of Wave 2 cross-file requests (wave 3, agent 86box-d1-I1, 2026-11-10)
+### Built
+- **T11 key hooks:** `fifworker.h` declares `isearch_translate(MSG*)` / `results_translate(MSG*)`; `main.cpp`
+  `app_dispatch` calls `if (isearch_translate(m) || results_translate(m)) return;` before the main accelerators (the
+  find-dialog branch is unchanged). Ctrl+A/X/V/Z typed in the incremental search box now edit the box, not the document.
+- **T11:** `frame_close` calls `fif_stop()` after the exit questions/config save, before `DestroyWindow`.
+- **T08 language tabs helper: `int tab_apply_lang_tabs(Tab* t)`** (tab.h, tabs.cpp). Call it after setting `t->lang`.
+  With `cfg.use_lang_tabs` on and a language set, it copies `LangInfo.tab_width` (1-16) and `use_tabs` (0 spaces,
+  1 tabs, 2 = global `cfg.use_spaces`) into `t->tv` and calls `textview_invalidate(g_app.textview)` if `t` is the
+  active text-view tab. Returns 1 when `t->tv` changed. None of my files sets `t->lang` outside selftest helpers: the
+  Syntax menu (doccmds) goes through `docio_set_lang` (T14), which still has the same logic inline. T14 can replace it
+  with the helper.
+- **Document > Tabs** (doccmds `tabs_changed`) now calls `textview_invalidate(g_app.textview)` instead of
+  `textview_config_changed` (same repaint, without re-creating the fonts). `cmd_edit_overwrite` already invalidated.
+- **`textview_pos_rect(HWND, epos, RECT* screen)`** (views.h, textview.cpp): screen rectangle of the character at pos
+  (wide characters 2 cells, one cell at a line end), wrap rows included (affinity 0: a position at a wrap point is at
+  the start of the next row). Returns 1 when the row is on screen (x is not clipped when scrolled sideways), else 0
+  with an empty rect. Not used yet; meant for the Find dialog's auto-move (dlgfind.cpp).
+- **Status bar (overseer review):** (a) a note wider than the last part switches the bar to simple mode (`SB_SIMPLE`,
+  the whole width, like Explorer's menu help) until the note expires; a short note stays in the last part. A click on
+  the bar during a long note dismisses it and hits the part underneath. `statusbar_get(SB_PART_FLAGS)` still returns
+  the note. (b) EOL part shows `-` for binary documents (NUL in the first 4 KB and not UTF-16, `detect_is_binary`)
+  in the hex view, or whenever the counts are mixed. Cached per tab id and length, so caret moves don't re-read.
+- `obj\t07\`, `obj\t07link.bat`, `obj\t07link.rsp` deleted.
+
+### Interface changes / deviations
+- **`tab_new` ownership reverted (approved by the overseer):** on failure it returns NULL and **doc stays the
+  caller's**. T07 had made it delete doc, but 9 of the 10 callers (dlgfind, dlgmisc, docio x2, fifpanel x2, hexview,
+  editcmds, textview) delete doc again on failure (double free on out-of-memory). Reverting fixed all of them with no
+  edits outside tabs.cpp. frame.cpp's `st_make_tab`, which leaked, now deletes doc. The tab.h comment says so.
+  **Don't drop the `delete d` after a failed `tab_new`.**
+- New declarations: `tab_apply_lang_tabs` (tab.h), `textview_pos_rect` (views.h), the two translate hooks
+  (fifworker.h; also still in T11's private fifworker_int.h, identical).
+
+### Tests
+- `python3 tools/lint.py`: 176 files, 0 findings.
+- VC6 (VM A): `obj\main frame tabs statusbar doccmds editcmds textview .obj` zero warnings at /W3; full
+  `w98 build editor` links pica.exe with no warnings.
+- `pica.exe -selftest -cfg C:\PICAI1`: `selftest: 9 passed, 0 failed (4 skipped)`. st_frame now has 125 checks; new:
+  `st_frame_translate` (isearch box: type, Ctrl+A, Ctrl+X empties the box, Ctrl+V twice = "worwor", Ctrl+Z; the
+  document stays "hello world" and unmodified) and `st_frame_notes` (short note in the part, long note -> SB_ISSIMPLE,
+  parts back after expiry).
+- VNC (real keys): `pica.exe -cfg C:\PICAI1V hello.txt`, Ctrl+I, type "wor", Ctrl+A, Ctrl+X, Ctrl+V, Ctrl+V: box
+  "worwor", document unchanged and unmodified; Ctrl+Z: box "wor". Shots: `docs/shots/i1_isearch_keys.png`,
+  `i1_isearch_undo.png`.
+- Status bar: `pica.exe -cfg C:\PICAI1S bin.dat` with a duplicate-id `langs\zz.lng`: the 15 s note "Language file
+  problem: ZZ.LNG: duplicate language id (skipped)" spans the whole bar (`docs/shots/i1_statusbar_longnote.png`);
+  after it expires: hex view parts with EOL `-` (`docs/shots/i1_statusbar_binary.png`). Fixtures in `tests/tmp/i1/`.
+
+### Notes / requests for files I don't own
+- T14 (docio.cpp `docio_set_lang`): optionally replace the inline language-tab block with `tab_apply_lang_tabs(t)`
+  (keep the unconditional invalidate + `app_update_status` for the highlighter change).
+- T12's textview request (single `ed_match_brace` call) was already applied in Wave 2. No change needed.
+- Find dialog (dlgfind.cpp): can switch its auto-move estimate to `textview_pos_rect`.
+
+## T13 Session, backups, crash recovery, exit flow (wave 3, agent 86box-d1-T13, 2026-11-10)
+### Built
+- `src/win/sessmgr.cpp`: backup scheduling and jobs (13.5), session writing (13.6: async A/B through the worker, sync
+  at startup/exit/emergency), startup restore and crash recovery (13.7: backups, orphan and stale backups,
+  changed-on-disk bar, missing-file note, `clean_exit`, `-nosession`, `restore_session` off), recovery of interrupted
+  safe saves (~PO/~PC pairs), the exit flow (`sessmgr_exit`), `sessmgr_tab_saved/closed`, `sessmgr_emergency`,
+  `st_session`.
+- `src/win/iothread.cpp`: BACKUP/SESSION/DELETE completions go to `sessmgr_io_done`. IOJ_DELETE with `meta.tabid != 0`
+  = `backup_delete_tab(path, tabid)`. `iothread_set_fs` (tests run FaultFs on the worker). `iothread_emergency_stop(ms)`
+  (iothread_stop with a timeout and no hand-over; `iothread_start` works again afterwards).
+- `src/win/sessmgr_int.h` (new private header for sessmgr.cpp and iothread.cpp): those hooks plus the job conventions.
+### Interface notes
+- **Folder:** `sessmgr_startup()` uses `g_app.cfg_dir`. `sessmgr_restore_from(dir)` restores from `dir` and makes it
+  the live folder (`dir\session1.ini`, `session2.ini`, `backup\`). Backups and sessions run only after one of these
+  calls, so other selftests never write backups.
+- **One sequence counter** numbers session writes and backups (BackupMeta.seq), starting above everything on disk.
+  At startup a backup older than the session is superseded and deleted in two cases: its session tab says
+  `modified=0 has_backup=0` (saved, undone or discarded after the backup), or its tab id is missing from the session
+  (the tab was closed). Every other backup is restored, also when both session files are lost. New tab ids start
+  above every id in the session and the backup folder (also with `-nosession`), so a new tab never overwrites an old
+  tab's backups.
+- **Backups:** a backup is due `backup_seconds` after the last edit, at most 30 s after the first edit that has no
+  backup yet, at once on WM_ACTIVATEAPP(false), and on exit. Checks run on TIMER_BACKUP (1 s); content changes are
+  detected through `Document::change_seq()`. Only one backup job per tab is in flight. Documents up to 2 MB are
+  **copied** into a MemSource for the worker; larger ones use a SnapshotSource. After a failure, retries back off
+  5-60 s and one status note is shown. Backups are deleted after a save (`sessmgr_tab_saved`), when the document is
+  back at its saved state or an untitled tab becomes empty, on close (after the session is written without the tab),
+  and on Discard at exit. On-demand tabs are never backed up: one status note per tab ("too large for backups").
+- **Session:** written 2 s after `sessmgr_state_changed`, every 60 s when a state hash (carets, scroll, view, wrap,
+  language, modified...) changed, after a save, on deactivation, synchronously after the startup restore
+  (`clean_exit=0`) and at exit (`=1`). Only one session job is in flight; a request that comes in meanwhile is written
+  when it finishes. Untitled tabs go into the session only when they are modified and not empty. Named tabs that
+  were discarded are written with `modified=0`.
+- **Restored tabs:** a tab restored from a backup is a Document built from the backup bytes (BOM checked), marked
+  always-modified, with the same tab id and generation (no rewrite until the next edit). Encoding, line ending,
+  language, caret and path come from the backup; view state comes from the session. `t->disk` = the file's
+  *current* stat, so T14's polling raises no second bar. Bars (NB_RECOVERED / NB_CHANGED):
+  "changed on disk after your unsaved changes were backed up" [Reload from disk] [Keep my version]; crash restore
+  "Recovered: Pica did not close normally..." [Save]/[Save As...] [Revert to saved]; a named file now missing gets a
+  bar with [Save]. Tabs kept at a normal exit get no bar (the `*` marks them), and the status bar says "N unsaved
+  documents from the last session restored." After a crash the status bar says "Pica did not close normally;
+  unsaved changes were restored from backups." Missing files are counted in one note. A backup that can't be
+  restored is copied to `<cfg>\recover\`. `sessmgr_tab_saved` hides NB_RECOVERED.
+- **Interrupted saves:** this case applies to session tabs whose file is missing and to MRU entries that are not open.
+  If `~PO*.TMP` (matching the session's recorded size and mtime exactly; for MRU entries, the only one in the
+  folder) and `~PC*.TMP` (the newest) exist next to the missing file, the PC bytes open (in memory, at most 4 MB) as
+  a tab with the target path, marked missing and always-modified. The bar offers [Restore this version], which moves
+  PC onto the target and keeps PO. Nothing is ever renamed without that click.
+- **Exit (`sessmgr_exit`):** running saves finish first. List: modified named tabs and on-demand tabs; untitled tabs
+  are listed only when backups are off or `ask_untitled_on_exit` is on (empty untitled tabs never). Then
+  `dlg_exit_prompt`; it falls back to a `Q_EXIT` question if the dialog fails. Save Selected uses `filecmd_save(t, 1)`
+  on ticked tabs (a failed or cancelled save cancels the exit) and discards unticked ones. Keep discards only the
+  on-demand tabs. Discard discards the listed tabs. With backups off, everything modified is discarded. Then final
+  backups and deletes, a queue flush (after 300 ms a "Still writing backups..." UiProgress; after 10 s `Q_SM_FLUSH`
+  asks Yes = wait more, No = exit now). If a kept document has no current backup, `Q_SM_UNSAVED` asks before
+  losing it. Last comes the synchronous session write with `clean_exit=1`. If WM_QUERYENDSESSION was answered and
+  the shutdown was then cancelled, the discard marks are reset on the next tick. Timers do nothing while the exit
+  flow runs.
+- **Emergency:** `iothread_emergency_stop(3000)`, then synchronous `backup_write` for every modified in-memory tab
+  without a current backup, then the session with `clean_exit=0`. Each step is in its own `__try`.
+- Private question ids: `Q_SM_FLUSH = Q_USER + 30`, `Q_SM_UNSAVED = Q_USER + 31`.
+### Interface changes / deviations from DESIGN
+- No shared header changed. New private header `sessmgr_int.h`. sessmgr.cpp includes T09's private `docio_int.h`
+  (`docio_set_lang`, `docio_wait_save`, `filecmd_save`, `iothread_running`).
+- Stale backups are detected with the shared sequence counter (a backup older than the session) instead of
+  DESIGN's "orphans are always restored". Only backups the user explicitly gave up (save, close, discard) are
+  dropped, so nothing that was never discarded is lost.
+- Restored tabs keep their numbers ("new 7") instead of "recovered N".
+- Crash-restored tabs get a NB_RECOVERED bar (DESIGN only has the status note). Tabs kept at a normal exit don't.
+- The session's `read_only` is applied (the user's Read-only toggle survives a restart).
+### Requests for files I don't own
+- **`src/win/docio.cpp` (T14), important:** in `docio_reload`, call `iothread_wait_tab(t->id, 30000)` before
+  `d->reinterpret(...)` and before `d->reset_source(...)`. Both free or swap the source and the add buffer that a
+  running backup SnapshotSource reads (documents > 2 MB; smaller ones are copied). Without the wait, a reload during
+  a backup of a big file is a use-after-free on the worker thread. `reload_as_edit` and `convert` are safe (they
+  only append).
+- `src/win/tab.h` (I1, optional): the backup fields are kept in sync (`has_backup`, `backup_gen`, `backup_seq` =
+  change_seq of the newest backup, `dirty_since_ms`, `backup_note_shown`); `io_pending` is unused.
+### Gotchas
+- Changing the folder must reset the A/B slot (`g_which`); otherwise the first write in a new folder goes to
+  `session2.ini`.
+- `notifybar_show` replaces the binary/read-only bar that docio_open showed for a restored tab (one bar per tab).
+- vncdo keys reach Pica fine for these checks; Ctrl+Tab / Ctrl+Shift+Tab switch tabs, Alt+K presses Keep.
+### Tests
+- Mac: clang `-fsyntax-only -Wall -Wextra -Wshadow -Wsign-compare` with a mock windows.h on both files: clean.
+  `python3 tools/lint.py`: 178 files, 0 findings.
+- VC6 (VM A): full `w98 build editor`: sessmgr.cpp and iothread.cpp **zero warnings**, pica.exe linked.
+- `pica.exe -selftest session -cfg C:\PICATEST`: **PASS st_session (102 checks)**. Covers: round trip (4 tabs:
+  selection, bookmarks, wrap, tab width, hex view and pane, forced language, encoding, EOL, active tab) through a
+  restart simulation; unsaved named and untitled contents byte-exact and marked; closing deletes backups; the
+  changed-on-disk bar and Reload (undoable, unmodified); `restore_session` off; a torn newest backup (FaultFs on the
+  worker: data write and cleanup fail) falls back to the previous generation; a newer orphan is restored ("new 7",
+  same id), stale and superseded backups are deleted, new ids are above them; an interrupted save is offered, not
+  restored silently, then Restore puts PC in place and keeps PO; an unmatched PO gives no offer; exit Cancel / Keep
+  (3 backups, session clean_exit=1, restored next start without the crash bar) / Save Selected (files written,
+  backups deleted, untitled kept) / Discard (backup deleted, file unchanged) / untitled only (no question) /
+  backups off (untitled listed, nothing kept); emergency (worker stopped, synchronous backup + session, restored and
+  marked); `-nosession` writes no session.
+- Full `pica.exe -selftest`: 12 passed, 1 failed. The failure is st_scenarios (T15, in progress: 3 audit checks).
+- Manual on VM A (`-multi -cfg C:\PT13`): typed into `named.txt` and a new tab. After 12 s both backups existed
+  (contents exactly what was typed). `w98 kill`, restart: both tabs back, the Recovered bar, and the status note
+  "Pica did not close normally..." (`docs/shots/t13_crash_restore.png`). Ctrl+S on the restored file: disk bytes
+  identical to the typed text, and its backup was deleted. Two modified named files + Alt+F4 showed one prompt
+  listing exactly the 2 files, untitled not listed (`t13_exit_prompt.png`). Keep for Next Session: 3 backups,
+  session clean_exit=1. Restart: all 3 tabs back, modified, no crash bar, "3 unsaved documents from the last session
+  restored." (`t13_keep_restore.png`).
+### Open issues
+- Two live instances sharing one cfg dir (`-multi`) can still pick the same new tab id; ids only start above what is
+  on disk at startup.
+- If the user answers "exit now" while backup jobs are still running, the final synchronous session write can race
+  with a queued async session write on the same A/B file (the other file keeps the previous valid copy).
+- Torn backup files of tabs that no longer exist are never cleaned up (harmless: they are ignored, and a new tab with
+  that id replaces them).
+
+## T14 Disk events (change detection, reload, locked files) and large-file mode (wave 3, agent 86box-d1-T14, 2026-11-10)
+### Built
+- `src/win/watch.cpp`: change detection (13.9). Poll of every named tab (frame TIMER_POLL, WM_ACTIVATEAPP, a tab
+  becoming active - detected in `watch_handles`, which the main loop calls every idle round), change notifications
+  for up to 16 folders of open files (fixed/remote/RAM drives, removable except A:/B:; UNC paths poll only),
+  1 s stability re-check on a private callback timer (`SetTimer(NULL, ...)`, runs only while candidates exist),
+  quiet reload of unmodified tabs (status note "Reloaded X (changed on disk)"), the NB_CHANGED bar
+  ([Reload] [Keep my version]; on-demand: [Reload] only), the NB_MISSING bar ([Save] [Close tab]) with
+  always-modified, reappearing files treated as changed, own-save suppression, queueing while inactive or modal,
+  quiet-reload retry while the writer still holds the file locked, `st_watch`.
+- `src/win/largefile.cpp`: indexer thread per on-demand document (`file_index`, own handle, below-normal priority,
+  WM_APP_INDEX wParam = job id, lParam = percent or 1000 = done), NB_INDEXING bar "Indexing X... 43%" + [Cancel]
+  (closes the tab; [x] only hides the bar), tab label / status bar percent, `finish_indexing` on completion, caret
+  to `-n<line>` or to the pre-reload place afterwards, the bar the tab had before (read-only, shared-RO, binary)
+  shown again after indexing, cancel on close, the one-time "Unsaved changes to files over N MB are not backed up"
+  note (own DocListener per on-demand tab, sets `Tab::backup_note_shown`), `st_largefile` (+ 100 MB timing).
+- `src/win/docio.cpp`: asynchronous on-demand open (`largefile_begin_ex`; synchronous indexing only if the thread
+  can't start), `docio_reload_ex` (flags RL_QUIET / RL_ASK_LOSSY; keeps caret line/column AND scroll; load mode
+  follows the file's current size: see below), `docio_ondemand_threshold()`, `docio_set_lang` uses I1's
+  `tab_apply_lang_tabs`, `docio_view_refresh` only repaints while a document indexes, st_docio waits for the indexer.
+- `src/win/watch_int.h` (new private header of my three files).
+- docio_int.h signatures unchanged (T13 uses them).
+
+### Interface notes
+- **Reload changes mode now (T09 open issue fixed).** Grown past the threshold -> `reset_source(empty MemSource)`
+  (EV_RESET, closes the old source) + `init_source_indexing(FileSource)` (silent) + indexer thread -> EV_INDEXED: the
+  same event sequence listeners see for a fresh open. Shrunk below it -> `init_source(MemSource)` (silent, leaves
+  on-demand mode) + `reset_source` on the same source (EV_RESET with counts). Both use only public Document calls.
+  During an async reload the caret sits at the origin; the saved place is applied when indexing ends.
+- Reload does **not** re-apply the language's tab settings (`set_lang_(..., apply_tabs = 0)`): the language is
+  unchanged and a Document > Tabs choice must survive files changing on disk. Open, Save As re-detect and Syntax
+  apply them (docio_set_lang -> tab_apply_lang_tabs).
+- Watch-triggered reloads are `docio_reload_ex(t, 0, 1, RL_QUIET)`: in-memory <= 4 MB = `reload_as_edit`, so Undo
+  brings the previous text back; errors never show a box (E_SHARING/E_ACCESS/E_NOTFOUND/E_IO retry after 2 s; others
+  show the bar with the reason). The bar's Reload uses RL_ASK_LOSSY: a modified document whose reload can't be undone
+  (> 4 MB, on-demand, encoding change) asks Q_RELOAD_DISCARD first.
+- Keep my version (and the bar's [x]) records the new disk state and marks the document always-modified (its text
+  differs from the file, so Save is enabled and the exit dialog lists it).
+- Missing: `Tab::disk_missing = 1`, `set_always_modified(true)`; if the file comes back and the user made no edit
+  since, always-modified is cleared again and the change is handled like any other (quiet reload / bar). Close tab
+  asks "Save changes?" only if the document had edits.
+- "Can act" = frame enabled (no message box / UiProgress) and our process owns the foreground window (selftest: always,
+  except `watch_test_set_inactive`). Queued changes set `Tab::change_pending` and are acted on by the next poll
+  (1 s timer, 3 s poll or activation).
+- `watch_tab_added/removed` are idempotent (app_add_tab and docio_open both call added).
+- Timings (VM A, no VNC): **100 MB SynthSource file on C: (written by st_largefile): first screen 14 ms, hex view at
+  the end of the file 18 ms, full index 2.2 s** (budget 1 s / 3 s). 20 MB on C:: open 8-10 ms, index ~0.5 s, save of
+  the edited on-demand doc 3.5 s. **100 MB file on M: (written from the Mac): first screen 80 ms, hex view at the end
+  69 ms, full index 93 s** (M: reads at ~1.1 MB/s; the tab stays usable read-only meanwhile).
+  Change detection: Mac-side append to a file on M: reloaded 3.5 s after the edit; in-VM `echo >>` by command.com on
+  C: 3.3 s (incl. agent98 latency); in-VM writes on C: are seen at once through the folder notification, then 1 s
+  stability.
+
+### Interface changes / deviations from DESIGN
+- No shared header changed. New private header `src/win/watch_int.h`.
+- 13.9 "watch_poll(all)": both values stat every named tab (cheap); `all` is ignored.
+- Tab activation check lives in `watch_handles` (tabs.cpp has no hook; it runs on the next idle round).
+- On-demand changed bar: [Reload] only (as 13.9 says for share-write opens), also for Mac-side edits of on-demand
+  files on M: (our deny-write handle does not stop those).
+- A file that changes while it is being indexed (size differs at the end) closes the tab with a message.
+
+### Requests for files I don't own
+- T13 (sessmgr): the "not backed up" note for on-demand tabs is shown by largefile.cpp and sets
+  `Tab::backup_note_shown`; check that flag before showing your own, or leave the note to me.
+- T15 (selftest.cpp `st_wait_idle`): treat `t->indexing` of any tab as busy (indexer thread).
+- Overseer: `Document` has no reset-into-indexing call; I used reset_source(empty) + init_source_indexing (see
+  above). A `Document::reset_source_indexing` would make that one call (optional).
+
+### Gotchas
+- **Win98 file times:** a file rewritten (CREATE_ALWAYS + write + close) shortly after a SetFileTime on it kept the
+  SetFileTime value on C:. Real writers normally change size or mtime; st_watch stamps its same-size rewrite itself.
+- `progress_window()` is in frame_int.h (frame modules only); watch.cpp uses `IsWindowEnabled(g_app.frame)`, which
+  UiProgress and message boxes both clear.
+- VC6 TIMERPROC takes `UINT` ids (no UINT_PTR in VC6's headers).
+- During this wave the shared link failed on T13's `sessmgr_io_done`; I tested with a private exe:
+  `obj\t14\mk.bat` (stub for that symbol + `obj\t14\link.rsp` over the shared objects -> `obj\t14\pica.exe`; build
+  output, delete freely).
+- Selftest hooks: `<cfg>\st_big` ("100" = write and time N MB in the fixture folder, or a path = time an existing file),
+  `<cfg>\st_watch_ext` (a path: st_watch opens it, writes `<path>.wait` and waits 60 s for an outside edit).
+
+### Tests
+- VC6: `obj\watch.obj largefile.obj docio.obj` zero warnings at /W3. lint 0 findings. Full `w98 build editor` (shared
+  tree, 12:35) links pica.exe with zero warnings.
+- `pica.exe -selftest watch largefile -cfg C:\PICATEST`: **PASS st_watch (43 checks), PASS st_largefile (30 checks)**
+  (34 with the 100 MB run). Full selftest on the shared build: 12 passed, 1 failed (st_scenarios, T15's, 3 audit checks of key routing,
+  in progress; no watch/indexer activity in its log), 0 skipped.
+- st_watch: quiet reload on size change after the 1 s stability check, caret line/column kept, undoable;
+  same-size change; own save never triggers; modified tab -> bar, bar shown once, Keep (disk state recorded, still
+  modified), next change -> bar, Reload + Undo brings my version back; reload_silent off -> bar for unmodified tabs;
+  delete -> missing bar (stays on later polls), always-modified; recreate -> reloaded, flag cleared; Save on the
+  missing bar rewrites the file; Close tab without a question; inactive -> queued, active -> acted on within 1.5 s;
+  folder notification fires and checks the tab at once; folder list empties without tabs; locked writer -> no popup,
+  retried, reloaded after unlock; locked open -> Retry asked again / Cancel; unlocked open asks nothing; read-only bar
+  Edit anyway; reload while a real IOJ_BACKUP job over a SnapshotSource of the 3 MB modified document is still
+  pending (T13's request: docio_reload_ex waits with `iothread_wait_tab(t->id, 30000)` before reinterpret /
+  reset_source / init_source; E_BUSY after 30 s). Manual: Mac-side append on M: (3.5 s) and command.com append on C: (3.3 s) through `st_watch_ext`.
+- st_largefile: 20 MB opens on demand in ~10 ms and indexes in the background; indexing bar with Cancel; edits and
+  save refused (E_BUSY); hex view usable and scrolls to the middle while indexing; line count exact; edit + save +
+  reopen byte-exact; old copy deleted on close; Cancel on the bar closes the tab and stops the thread; closing during
+  indexing stops it; 3 MB in memory -> grows to 6 MB -> reload goes on demand (indexed, convert refused) -> shrinks
+  to 1 MB -> back in memory (convert allowed).
+- Screenshots: `docs/shots/t14_indexing.png` (20 MB on M: at 21%: bar, first screen, "(indexing 21%)" label,
+  "Large Indexing 21%" status), `t14_changed_bar.png` (Mac-side edit, reload_silent off), `t14_missing_bar.png`
+  (file deleted on the Mac side; tab marked `*`).
+- Big test files removed (C:\PICATEST\fixtures empty; tests/tmp big files deleted).
+
+### Open issues
+- Change detection on M: depends on the poll (3 s) + 1 s stability: 1-4 s. A shorter poll for the active tab would
+  make it snappier.
+- On-demand reload counts nothing synchronously, but an in-memory reload of a large file on M: shows the modal
+  progress window (1.1 MB/s); Cancel there turns a quiet reload into the bar.
+- The 100 MB fixture takes ~80 s to write on C: (SynthSource + 6 MB/s writes), so it is opt-in (`st_big`).
+
+## T15 Selftest suite, key injection, shortcut audit, help text (wave 3, agent 86box-d1-T15, 2026-11-10)
+### Built
+- `src/win/selftest.cpp`: key injection rewritten, `st_keys_modal`, `st_wait_idle` completed, `st_scenarios` (10
+  end-to-end scenarios incl. the accelerator audit and the AltGr test). The framework and `st_framework` are unchanged.
+- `src/win/cmdtable.cpp`: `IDM_LINE_CUT` entry; the Help commands (`cmd_help_show(section)`, `cmd_help_keys/regex`;
+  `cmd_help_about` calls `dlg_about()`).
+- `res/resource.h`: `IDM_LINE_CUT 40120`. `res/menu.rc2`: Ctrl+L -> `IDM_LINE_CUT`, Ctrl+Shift+L -> `IDM_LINE_DEL`,
+  Line submenu "Cu&t Line\tCtrl+L" + "De&lete Line\tCtrl+Shift+L"; `IDA_FIND` gained Ctrl+Shift+F3 (Find Selection
+  Backwards also works while the Find dialog has the focus, like the other F3 keys).
+- `src/win/cmds.h`: `cmd_line_cut` declared; `HELP_TOP/KEYS/REGEX/ENCODINGS/HEX/FILES/LARGE` section ids for
+  `cmd_help_show`.
+- `src/help/help.md`: the user help (views, all shortcuts incl. text-view and hex-view keys, regex cheat sheet,
+  encodings and line endings, hex view, files/settings/backups, large files, command line, tips). ASCII, CRLF, prose
+  wrapped at 88 columns and tables aligned so it reads well as raw text in an 800x600 window.
+
+### Interface notes
+- **st_keys** syntax: `^` Ctrl, `+` Shift, `%` Alt for the next key; `{NAME}` keys (ENTER TAB ESC BS DEL INS HOME END
+  PGUP PGDN UP DOWN LEFT RIGHT SPACE F1-F12); `{PLUS} {CARET} {PERCENT} {LBRACE} {RBRACE}` type those characters
+  (resolved by name, so `{LEFT}`/`{F12}` are no longer remapped: T10's bug fixed); `{VKdd}` = any virtual key in hex
+  (e.g. `^{VKDD}` = Ctrl+]); other characters use the key VkKeyScan gives (layout shift/ctrl/alt bits applied); a
+  character without a key (e.g. `\xE9` on US) is posted as WM_CHAR. Messages go to the focus window (if the focus is
+  not ours: the active view, focused first) and run through the real `app_dispatch` while the faked keyboard state is
+  set. Alt without Ctrl = WM_SYSKEYDOWN (bit 29), Ctrl+Alt = WM_KEYDOWN, extended bit for navigation keys - as Windows.
+  Remember `+` is Shift: type a plus sign with `{PLUS}`.
+- **st_keys_modal(c, open_keys or NULL, cmd, dlg_keys, title, cap)** (static in selftest.cpp): for modal dialogs (Go
+  To, About, Options...). The dialog keys are queued and fed from a thread timer (dispatched by the dialog's own
+  loop), one message per 30 ms, only while one of our `#32770` dialogs owned by the frame is up (never into the main
+  window). A dialog still open 1.2 s after the last key is cancelled and the check fails, so a broken dialog can't hang
+  the run. Returns 1 if a dialog appeared, its caption in `title`. Export it in selftest.h if other st_ functions need it.
+- **st_wait_idle** = no idle work pending (`app_idle_work`), `!fif_running()`, `iothread_flush(0)` (queue empty;
+  hands finished jobs over), no tab with `saving`, `indexing` or `io_pending` (T11/T14 requests).
+- **Help tab**: the RCDATA text is written to `<cfg_dir>\Pica Help.md` (falls back to `%TEMP%` if not writable; only
+  rewritten when no tab shows it and the bytes differ) and opened with `docio_open` (`read_only = 1`, `from_session = 1`
+  = no MRU entry, no reuse of an empty "new 1"). An open tab named `Pica Help.md` is reused. The section heading line
+  (exact text, e.g. `## Keyboard shortcuts`) becomes the top line with the caret on it (text view: detach, set
+  `tv.top_line`/`sel`, attach; hex view or another tab: `app_activate`). **Keep the `##` headings in help.md in sync
+  with `k_help_heading[]` in cmdtable.cpp** (sc_help checks the two used by the menu).
+- `<cfg>\st_help.hold` (seconds) keeps the help tab on screen during `st_scenarios` (screenshots).
+
+### Scenarios (st_scenarios, 457 checks)
+1. save cycle: open ANSI CRLF fixture, type at the end and in line 1, Ctrl+Z/Ctrl+Y, Backspace/Left/Del, title `*`,
+   Ctrl+S (async, waited), bytes on disk, Ctrl+W without a question, reopen (bytes, ANSI CRLF, no history); UTF-8 BOM LF
+   file: e-acute typed (WM_CHAR), saved as C3 A9 with the BOM, Select All + Del keeps the BOM, undo to the save point.
+2. hex switch: UTF-8 mixed-EOL file, caret byte kept text -> hex, nibble moves, hex -> text snaps to the character
+   start, 6 switches change no byte (not modified, no undo), typed `42` (overwrite) and `z` in the char pane, Ctrl+Z
+   in the text view undoes the hex edits back to the save point, Ctrl+Y redoes.
+3. find/replace: Ctrl+H, type, Alt+L to Replace with, Alt+A Replace All ("3 replaced"), Esc, one Ctrl+Z undoes it,
+   Ctrl+Y, F3 / F3 / Shift+F3 positions, Ctrl+F + Alt+G (Regex) + Alt+N + `(ab` = live red error, `b\w+d` + Enter finds
+   "bird", Alt+M back to Normal.
+4. encoding: ANSI -> UTF-8 (status bar), save, -> LF (status bar), save, Ctrl+Z twice = original encoding and bytes,
+   save, -> UTF-16 LE (BOM is not text), undo; UTF-8 Cyrillic -> ANSI: loss prompt Cancel (nothing) / OK ('?'), undo.
+5. line commands (.c file): Ctrl+D, Ctrl+Shift+Down (moved line selected), Ctrl+L (cut: clipboard = "alpha\r\n"),
+   Ctrl+Shift+L (delete, clipboard kept), Ctrl+V, Ctrl+Shift+U / Ctrl+U (selection kept), Ctrl+Q twice (`// `),
+   Ctrl+Shift+Up, undo everything back to the save point.
+6. bookmarks: Ctrl+F2 x2, F2 / F2 / F2 (wrap) / Shift+F2 (wrap), marks follow an inserted line and come back on undo,
+   Ctrl+F2 removes one, Clear All, F2 without bookmarks ("No bookmarks" note, caret unchanged).
+7. go to (real modal dialog): `7`, `end`, `3:4`, invalid `zz` + Enter (stays) + Esc; hex view: "Go To Offset", `1A`,
+   `#5`, Esc.
+8. help: F1 opens the read-only Markdown tab at "## Keyboard shortcuts" as the top line, Help > Regular Expressions
+   reuses it, typing changes nothing, Ctrl+W closes it, About (modal) opens and closes with Enter.
+9. accelerator audit (below). 10. AltGr (below).
+
+### Shortcut audit findings
+- All 48 keys of DESIGN 15.5 (with Ctrl+L = Cut Line) reach exactly their command through the real loop
+  (`cmd_set_trace(fn, 1)`: traced, nothing runs): 46 live; F4 / Shift+F4 are grey without results (the key is
+  swallowed; their table entries are checked statically). `IDA_MAIN` has exactly these 48 entries, nothing extra;
+  all 39 shortcuts shown in menu texts have a matching accelerator; Del / Ins / Tab reach the view.
+- Fixed: Ctrl+L / Ctrl+Shift+L split (T12), Ctrl+Shift+F3 in `IDA_FIND`.
+- **AltGr**: VM A could load the Finnish layout (`LoadKeyboardLayout("0000040B")`, unloaded afterwards): real AltGr
+  keys typed `@ { [ ] } \ | € $ £ µ` into an ANSI document with no accelerator firing; `~` is a dead key on that
+  layout (skipped). On layouts without AltGr the test simulates the Finnish and German key positions.
+- **Known limit (not fixed, needs main.cpp):** Ctrl+Alt+S (Save As, the Notepad++ key) swallows AltGr+S on layouts that
+  put a letter there, e.g. Polish (Programmers) s-acute. Proposed fix for `app_dispatch` (I1/T17), before
+  `TranslateAcceleratorA(g_app.frame, g_app.accel, m)`: skip the accelerator when the key is a Ctrl+Alt accelerator
+  key that the current layout turns into a character:
+  ```
+  static int altgr_char(const MSG* m)          // Ctrl+Alt+key that types a character on this layout (AltGr)
+  {
+    BYTE ks[256]; WORD ch = 0;
+    if (m->message != WM_KEYDOWN || GetKeyState(VK_CONTROL) >= 0 || GetKeyState(VK_MENU) >= 0) return 0;
+    if (m->wParam != 'S') return 0;            // only keys IDA_MAIN uses with Ctrl+Alt (ToAscii eats dead keys)
+    if (!GetKeyboardState(ks)) return 0;
+    return ToAscii((UINT)m->wParam, (UINT)((m->lParam >> 16) & 0xFF), ks, &ch, 0) == 1;
+  }
+  ...  if (!altgr_char(m) && g_app.accel && g_app.frame && TranslateAcceleratorA(...)) return;
+  ```
+  On US/Finnish layouts Ctrl+Alt+S stays Save As (ToAscii returns 0). The AltGr scenario logs what Ctrl+Alt+S does.
+- UX.md 7 keys not in 1.0 (no commands exist; DESIGN scope): Ctrl+Shift+T reopen closed tab, Ctrl+J join lines,
+  Ctrl+P print, zoom keys. Alt+F4 is the system close (menu text only).
+
+### Interface changes / deviations from DESIGN
+- 15.5: Ctrl+L = Cut Line (new `IDM_LINE_CUT`), Ctrl+Shift+L = Delete Line (T12's request; Notepad++/VC6 behaviour).
+- `IDA_FIND` has six entries (Ctrl+Shift+F3 added to DESIGN 15.5's five).
+- `cmds.h`: `cmd_line_cut`, `HELP_*` enum. No signature changed.
+
+### Requests for files I don't own
+- `src/win/editcmds.cpp` (I1/T17): `cmd_line_del`'s `GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_SHIFT) >= 0`
+  branch is now dead code (Ctrl+L sends IDM_LINE_CUT; Ctrl+Shift+L and the menu send IDM_LINE_DEL): make
+  `cmd_line_del` call `ec_line_delete()` only, and drop the local `cmd_line_cut` prototype (now in cmds.h).
+- `src/win/main.cpp` (I1/T17): the `altgr_char` guard above.
+- `src/win/docio.cpp` (T14/T17): **double delete** when `tab_new` fails: `tab_new` already deletes the document on
+  failure (T07), but `docio_new` (`t = tab_new(d); if (!t) { delete d; ...}`) and `docio_open` (`if (!t) { delete d;
+  ui_error(...) }`) delete it again. Drop the `delete d` in both (out-of-memory path only).
+- `src/win/selftest.h` (overseer, optional): declare `st_keys_modal` if other modules want modal-dialog key tests.
+
+### Gotchas
+- VK_LEFT (0x25) == '%', VK_F12 (0x7B) == '{', VK_RIGHT == '\'', VK_DOWN == '(' ...: never compare key codes with
+  characters; the old remap broke `{LEFT}`/`{F12}`.
+- An accelerator whose menu item is grey is swallowed by TranslateAccelerator (no WM_COMMAND), so audits need a state
+  where commands are enabled (two tabs, modified named file, undo + redo, selection, clipboard data).
+- Undo merging: "a", Left, Right, "b" is ONE undo step (the caret came back); use `Document::break_undo_merge` to get two.
+- A modal dialog opened by a key blocks inside `st_pump`; feed it with a thread timer (`SetTimer(NULL, ...)`), not
+  with more st_keys calls.
+- `w98 run` waits for the whole selftest (~3 min on VM A); the shell call then outlives the Bash tool's 3-minute
+  foreground limit - run it in the background.
+
+### Tests
+- `python3 tools/lint.py` on all my files: 0 findings (help.md CRLF).
+- VC6 (VM A): `obj\selftest.obj`, `obj\cmdtable.obj`, `obj\pica.res` and the full `w98 build editor` link with zero
+  warnings.
+- `pica.exe -selftest -cfg C:\PICATEST` (all): **13 passed, 0 failed (0 skipped)**: st_framework
+  4271, st_frame 125, st_textview 56, st_docio 238, st_hexview 78, st_search 60, st_fif 29, st_edit 249, st_dialogs 59,
+  st_session 102, st_watch 43, st_largefile 30, **st_scenarios 457** (every scenario 0 failed). Run three times on
+  the final tree; one full run takes about 3 minutes.
+- Screenshot `docs/shots/t15_help_keys.png`: help tab "Pica Help.md - Pica [Read-only]" at "## Keyboard shortcuts"
+  (line 41 at the top), Markdown headings coloured, aligned tables, status bar `Markdown | ANSI | CRLF | RO`.
+
+### Open issues
+- The audit can't check F4 / Shift+F4 live (needs find results); their table entries are checked.
+- `~` (dead key on the Finnish layout) is not typed by the AltGr test in real-layout mode.
+- Help is plain Markdown source (coloured), not rendered; links between sections are by heading text.

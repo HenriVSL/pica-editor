@@ -14,6 +14,7 @@
 #include "iothread.h"
 #include "selftest.h"
 #include "bench.h"
+#include "fifworker.h"
 #include "winenc.h"
 #include "frame_int.h"
 #include "codec.h"
@@ -255,8 +256,11 @@ void app_dispatch(MSG* m)
   if (g_app.find_dlg && (m->hwnd == g_app.find_dlg || IsChild(g_app.find_dlg, m->hwnd))) {
     if (g_app.accel_find && TranslateAcceleratorA(g_app.frame, g_app.accel_find, m)) return;
     if (IsDialogMessageA(g_app.find_dlg, m)) return;
-  } else if (g_app.accel && g_app.frame && TranslateAcceleratorA(g_app.frame, g_app.accel, m)) {
-    return;
+  } else {
+    // The incremental search box and the results panel keep their editing keys (Ctrl+C/V/X/Z/A) away from the main
+    // accelerators, which would act on the document.
+    if (isearch_translate(m) || results_translate(m)) return;
+    if (g_app.accel && g_app.frame && TranslateAcceleratorA(g_app.frame, g_app.accel, m)) return;
   }
   TranslateMessage(m);
   DispatchMessageA(m);

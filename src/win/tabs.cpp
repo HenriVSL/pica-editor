@@ -91,10 +91,10 @@ static void tab_zero(Tab* t)
 Tab* tab_new(Document* doc)
 {
   Tab* t = new Tab;
-  if (!t) { if (doc) delete doc; return 0; }
+  if (!t) return 0;                               // doc stays the caller's on failure (every caller deletes it)
   tab_zero(t);
   t->hl = new Highlighter;
-  if (!t->hl) { delete t; if (doc) delete doc; return 0; }
+  if (!t->hl) { delete t; return 0; }
   t->doc = doc;
   t->id = g_app.next_tabid++;
   t->tv.tab_width = (u8)g_app.cfg.tab_width;
@@ -109,6 +109,23 @@ Tab* tab_new(Document* doc)
     watch_attach(t);
   }
   return t;
+}
+
+int tab_apply_lang_tabs(Tab* t)
+{
+  const LangInfo* li;
+  u8 tw, sp;
+  if (!t || !t->lang || !g_app.cfg.use_lang_tabs) return 0;
+  li = t->lang;
+  tw = t->tv.tab_width; sp = t->tv.use_spaces;
+  if (li->tab_width >= 1 && li->tab_width <= 16) tw = (u8)li->tab_width;
+  if (li->use_tabs == 0) sp = 1;
+  else if (li->use_tabs == 1) sp = 0;
+  else sp = (u8)(g_app.cfg.use_spaces ? 1 : 0);
+  if (tw == t->tv.tab_width && sp == t->tv.use_spaces) return 0;
+  t->tv.tab_width = tw; t->tv.use_spaces = sp;
+  if (t == app_active() && t->view == VIEW_TEXT && g_app.textview) textview_invalidate(g_app.textview);
+  return 1;
 }
 
 void tab_free(Tab* t)

@@ -455,6 +455,7 @@ void frame_close()
   if (!exit_questions()) { g_app.exiting = 0; return; }
   save_placement();
   app_save_config();
+  fif_stop();                                     // a running Find in Files must not post into a dead frame
   DestroyWindow(g_app.frame);
 }
 
@@ -857,7 +858,7 @@ static Tab* st_make_tab(const char* path, const char* text, int modified, const 
   if (text && text[0]) d->replace(0, 0, (const u8*)text, es_len(text));
   if (!modified) d->set_saved();
   t = tab_new(d);
-  if (!t) return 0;
+  if (!t) { delete d; return 0; }
   if (path) es_copy(t->path, sizeof(t->path), path);
   else { t->untitled = 1; t->untitled_no = g_app.next_untitled++; }
   if (lang) { t->lang = lang_find(lang); t->hl->attach(&t->lines, t->lang); }
@@ -1098,6 +1099,63 @@ static void st_frame_notify(StCtx* c, Tab* a, Tab* other)
 
 // Manual visual check: if <cfg>\st_frame.hold exists (contents: seconds, default 60), show a demo state (3 tabs,
 // one modified, notification bar, status texts) and pump messages that long before the automated checks run.
+// I1: editing keys typed into the incremental search box stay in the box (isearch_translate in app_dispatch).
+// Without the hook Ctrl+X/V/Z reach the main accelerators and cut/paste/undo in the document.
+static void st_frame_translate(StCtx* c)
+{
+  Tab* t = st_make_tab(0, "hello world", 0, 0);
+  char box[64];
+  u8 bytes[16];
+  HWND e;
+  if (!t || !g_app.isearch) { ST_CHECK(c, 0, "translate: setup"); if (t) frame_close_tab(t, 0); return; }
+  SetForegroundWindow(g_app.frame);
+  isearch_show();
+  st_pump(c, 50);
+  e = GetFocus();
+  ST_CHECK(c, e && IsChild(g_app.isearch, e), "incremental search box has the focus");
+  st_keys(c, "wor");
+  st_keys(c, "^a");
+  st_keys(c, "^x");
+  st_pump(c, 50);
+  box[0] = 0;
+  if (e) GetWindowTextA(e, box, sizeof(box));
+  st_checkf(c, box[0] == 0, "Ctrl+A, Ctrl+X cut the box text (box \"%s\")", box);
+  st_keys(c, "^v");
+  st_keys(c, "^v");
+  st_pump(c, 50);
+  box[0] = 0;
+  if (e) GetWindowTextA(e, box, sizeof(box));
+  st_checkf(c, strcmp(box, "worwor") == 0, "Ctrl+V twice pasted into the box (box \"%s\")", box);
+  st_keys(c, "^z");
+  st_pump(c, 50);
+  memset(bytes, 0, sizeof(bytes));
+  st_checkf(c, t->doc->length() == 11 && t->doc->read(0, bytes, 11) == E_OK && memcmp(bytes, "hello world", 11) == 0 &&
+            !t->doc->modified(), "document untouched by Ctrl+X/V/Z in the box (length %u)", (u32)t->doc->length());
+  isearch_hide();
+  st_pump(c, 20);
+  frame_close_tab(t, 0);
+}
+
+#ifndef SB_ISSIMPLE
+#define SB_ISSIMPLE (WM_USER + 14)
+#endif
+
+// I1: a note too long for the last part fills the whole status bar until it expires; a short one stays in the part.
+static void st_frame_notes(StCtx* c)
+{
+  char text[300];
+  int vis = g_app.statusbar && IsWindowVisible(g_app.statusbar);
+  if (!vis) { ST_CHECK(c, 0, "notes: status bar visible"); return; }
+  statusbar_note_ms(5000, "Short note");
+  st_checkf(c, !SendMessageA(g_app.statusbar, SB_ISSIMPLE, 0, 0), "short note stays in the last part");
+  statusbar_get(SB_PART_FLAGS, text, sizeof(text));
+  st_checkf(c, strcmp(text, "Short note") == 0, "short note text \"%s\"", text);
+  statusbar_note_ms(5000, "UTF-16 edits take longer on this document: a long note that cannot fit in the last part");
+  st_checkf(c, SendMessageA(g_app.statusbar, SB_ISSIMPLE, 0, 0) != 0, "long note fills the whole bar");
+  statusbar_note_expired();
+  st_checkf(c, !SendMessageA(g_app.statusbar, SB_ISSIMPLE, 0, 0), "parts back after the note expired");
+}
+
 static void st_frame_hold(StCtx* c)
 {
   char path[300];
@@ -1385,6 +1443,8 @@ void st_frame(StCtx* c)
   st_frame_progress(c);
   st_frame_settings(c);
   st_frame_copydata(c);
+  st_frame_translate(c);
+  st_frame_notes(c);
 
   // cleanup: close every tab this test made (no questions)
   for (i = app_tab_count() - 1; i >= base; i--) frame_close_tab(app_tab(i), 0);

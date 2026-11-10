@@ -1,5 +1,6 @@
 // iothread.cpp - I/O worker thread (DESIGN 4.3, 13.3, 13.5, 13.6). T09: queue, worker, SAVE_TEMP jobs, completion
-// hand-over; T13 adds the completion handling of BACKUP/SESSION/DELETE (the worker side below already runs them).
+// hand-over; T13: completion of BACKUP/SESSION/DELETE (handed to sessmgr_io_done), "delete all backups of a tab"
+// jobs, the test file-system hook and the emergency stop (sessmgr_int.h).
 // Owner after Wave 0: T09 (T13 in Wave 3).
 //
 // Jobs live in one FIFO list of nodes (allocated at submit, so the worker never allocates): QUEUED -> RUNNING ->
@@ -15,6 +16,7 @@
 #include "ui.h"
 #include "iothread.h"
 #include "docio_int.h"
+#include "sessmgr_int.h"
 #include "fsys.h"
 #include "fileops.h"
 #include "estr.h"
@@ -29,6 +31,7 @@ static HANDLE g_wake = 0;                 // auto-reset: work queued or stop req
 static volatile LONG g_stop = 0;
 static IoNode* g_head = 0;                // FIFO: oldest first
 static u32 g_next_id = 1;
+static FileSys* volatile g_fs = 0;       // tests: file system for every job (NULL = fs_os())
 
 static void io_lock() { EnterCriticalSection(&g_cs); }
 static void io_unlock() { LeaveCriticalSection(&g_cs); }
@@ -55,7 +58,7 @@ private:
 
 static void io_run(IoJob* j)
 {
-  FileSys* fs = fs_os();
+  FileSys* fs = g_fs ? g_fs : fs_os();
   IoProgress cb(j);
   if (j->cancel) { j->result = E_CANCEL; return; }
   switch (j->kind) {
@@ -70,8 +73,8 @@ static void io_run(IoJob* j)
     j->result = j->bytes ? ab_write(fs, j->path, j->path2, j->last_which, j->bytes->data(), j->bytes->size(), &j->which)
                          : E_STATE;
     break;
-  case IOJ_DELETE:
-    j->result = fs->remove(j->path);
+  case IOJ_DELETE:                        // meta.tabid != 0: every backup generation of that tab in folder 'path'
+    j->result = j->meta.tabid ? backup_delete_tab(fs, j->path, j->meta.tabid) : fs->remove(j->path);
     break;
   default:
     j->result = E_UNSUPPORTED;
@@ -120,8 +123,12 @@ static void io_dispatch(IoJob* j)
   case IOJ_SAVE_TEMP:
     docio_io_done(j);                      // frees j->data and its ctx
     break;
+  case IOJ_BACKUP:
+  case IOJ_SESSION:
+  case IOJ_DELETE:
+    sessmgr_io_done(j);                    // generation bookkeeping, A/B slot, retries (sessmgr.cpp)
+    break;
   default:
-    // T13: hand BACKUP / SESSION / DELETE results to sessmgr here (generation bookkeeping, A/B slot, retries).
     break;
   }
   io_job_free(j);
@@ -165,19 +172,24 @@ int iothread_running()
   return g_thread != 0 && !g_stop;
 }
 
-void iothread_stop()
+void iothread_set_fs(FileSys* fs)
+{
+  g_fs = fs;
+}
+
+static int io_stop(u32 timeout_ms)
 {
   IoNode* n;
   IoJob* j;
-  if (!g_thread) return;
+  if (!g_thread) return 1;
   InterlockedExchange((LONG*)&g_stop, 1);
   io_lock();
   for (n = g_head; n; n = n->next) InterlockedExchange((LONG*)&n->job->cancel, 1);
   io_unlock();
   SetEvent(g_wake);
-  if (WaitForSingleObject(g_thread, 15000) != WAIT_OBJECT_0) {
+  if (WaitForSingleObject(g_thread, timeout_ms) != WAIT_OBJECT_0) {
     // The worker is stuck in a file call (dead network share). Leave it; the process is ending.
-    return;
+    return 0;
   }
   CloseHandle(g_thread); g_thread = 0;
   CloseHandle(g_wake); g_wake = 0;
@@ -194,6 +206,19 @@ void iothread_stop()
     delete n;
   }
   io_unlock();
+  return 1;
+}
+
+void iothread_stop()
+{
+  io_stop(15000);
+}
+
+int iothread_emergency_stop(u32 timeout_ms)
+{
+  // Cancelled jobs are dropped without hand-over (a cancelled backup removes its partial file; finished saves that
+  // were never renamed delete their temp file). iothread_start() works again afterwards (selftest).
+  return io_stop(timeout_ms);
 }
 
 u32 iothread_submit(IoJob* job)

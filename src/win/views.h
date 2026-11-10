@@ -31,6 +31,9 @@ void textview_invalidate(HWND w);
 void textview_config_changed(HWND w);           // fonts, colours, tab width, line numbers
 void textview_caret_info(HWND w, CaretInfo* out);
 void textview_set_panel_handler(HWND w, PanelHandler* h);
+// Screen rectangle of the character at pos (one cell at the end of a line), word wrap included. Returns 1 when pos
+// is on a visible row (the rectangle may still lie left or right of the window when scrolled sideways), else 0.
+int  textview_pos_rect(HWND w, epos pos, RECT* screen);
 HWND hexview_create(HWND parent, int id, int is_panel);
 void hexview_attach(HWND w, Tab* t);
 void hexview_set_selection(HWND w, epos anchor, epos caret, int scroll_mode);

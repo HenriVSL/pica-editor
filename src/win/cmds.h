@@ -37,6 +37,7 @@ void cmd_edit_delete(void);
 void cmd_edit_selectall(void);
 void cmd_line_dup(void);
 void cmd_line_del(void);
+void cmd_line_cut(void);                 // Ctrl+L: touched lines to the clipboard, then deleted
 void cmd_line_up(void);
 void cmd_line_down(void);
 void cmd_edit_comment(void);
@@ -175,6 +176,9 @@ UINT cmd_state(int id);                         // state bits for one id
 void cmd_update_menu(HMENU popup);              // applies cmd_state to every item of a popup (WM_INITMENUPOPUP)
 typedef void (*CmdTraceFn)(int id);
 void cmd_set_trace(CmdTraceFn fn, int trace_only);  // every app_command(id) calls fn(id) first; trace_only: skip the handler
-void cmd_help_show(int section);                    // cmdtable.cpp (T15): help tab at a section (stub)
+// cmdtable.cpp (T15): opens the built-in help (RCDATA IDR_HELP, written to <cfg_dir>\Pica Help.md) as a read-only
+// tab, or activates it, and scrolls the section's heading to the top.
+enum { HELP_TOP = 0, HELP_KEYS, HELP_REGEX, HELP_ENCODINGS, HELP_HEX, HELP_FILES, HELP_LARGE, HELP_SECTIONS };
+void cmd_help_show(int section);
 
 #endif

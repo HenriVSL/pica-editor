@@ -282,7 +282,7 @@ void cmd_eol_cr(void) { eol_cmd(EOL_CR); }
 
 static void tabs_changed(Tab* t)
 {
-  if (t == app_active() && g_app.textview) textview_config_changed(g_app.textview);
+  if (t == app_active() && g_app.textview) textview_invalidate(g_app.textview);   // tab width / insert spaces
   app_update_status();
 }
 

@@ -25,6 +25,7 @@
 #include "sessmgr.h"
 #include "watch.h"
 #include "largefile.h"
+#include "watch_int.h"
 #include "dialogs.h"
 #include "selftest.h"
 #include "fsys.h"
@@ -99,6 +100,11 @@ static epos ondemand_threshold()
   return (epos)(mb * DOCIO_MB);
 }
 
+epos docio_ondemand_threshold()
+{
+  return ondemand_threshold();
+}
+
 static int is_nfo(const char* path)
 {
   const char* n = ui_path_name(path);
@@ -137,7 +143,10 @@ static void sel_set(Tab* t, epos anchor, epos caret)
 void docio_view_refresh(Tab* t)
 {
   if (!t) return;
-  if (t == app_active()) {
+  if (t == app_active() && t->doc && t->doc->indexing()) {    // no line counts yet: just repaint (first screen)
+    if (t->view == VIEW_HEX && g_app.hexview) hexview_invalidate(g_app.hexview);
+    else if (g_app.textview) textview_invalidate(g_app.textview);
+  } else if (t == app_active()) {
     if (t->view == VIEW_HEX && g_app.hexview) {
       hexview_set_selection(g_app.hexview, t->sel.anchor, t->sel.caret, SCROLL_MIN);
       hexview_invalidate(g_app.hexview);
@@ -199,7 +208,9 @@ void docio_place_set(Tab* t, const DocPlace& p)
 
 // ---- language ----
 
-void docio_set_lang(Tab* t, const LangInfo* li, int forced)
+// apply_tabs: copy the language's tab settings into the tab (tab_apply_lang_tabs, when Config.use_lang_tabs). A
+// reload keeps the language and passes 0, so a Document > Tabs choice survives files changing on disk.
+static void set_lang_(Tab* t, const LangInfo* li, int forced, int apply_tabs)
 {
   int color;
   if (!t || !t->hl) return;
@@ -209,16 +220,16 @@ void docio_set_lang(Tab* t, const LangInfo* li, int forced)
   // Large-mode gate (8.6): colouring off unless the user picked a language; never for on-demand documents.
   color = !t->ondemand && (!t->large || forced);
   t->hl->set_enabled(color ? true : false);
-  if (li && g_app.cfg.use_lang_tabs) {
-    if (li->tab_width >= 1 && li->tab_width <= 16) t->tv.tab_width = li->tab_width;
-    if (li->use_tabs == 0) t->tv.use_spaces = 1;
-    else if (li->use_tabs == 1) t->tv.use_spaces = 0;
-    else t->tv.use_spaces = g_app.cfg.use_spaces;
-  }
+  if (apply_tabs) tab_apply_lang_tabs(t);
   if (t == app_active()) {
     if (g_app.textview) textview_invalidate(g_app.textview);
     app_update_status();
   }
+}
+
+void docio_set_lang(Tab* t, const LangInfo* li, int forced)
+{
+  set_lang_(t, li, forced, 1);
 }
 
 static HMENU find_popup_with(HMENU m, UINT id)
@@ -452,8 +463,8 @@ int docio_open(const char* path_in, const OpenOpts* o_in, Tab** out)
   docio_set_lang(t, lang_for_file(ui_path_name(path)), 0);
   {
     epos p = d->text_origin();
-    if (o.line > 1) { p = d->line_start(o.line - 1); if (p < d->text_origin()) p = d->text_origin(); }
-    t->sel.anchor = t->sel.caret = p;
+    if (o.line > 1 && !ondemand) { p = d->line_start(o.line - 1); if (p < d->text_origin()) p = d->text_origin(); }
+    t->sel.anchor = t->sel.caret = p;                 // on demand: the indexer moves the caret to o.line when done
   }
   if (app_add_tab(t, o.no_activate ? 0 : 1) != E_OK) {
     info_remove(t->id);
@@ -461,13 +472,20 @@ int docio_open(const char* path_in, const OpenOpts* o_in, Tab** out)
     ui_error("There is not enough memory to open %s.", ui_path_name(path));
     return E_NOMEM;
   }
+  show_open_bars(t, r);                              // before the indexing bar, which shows it again when done
   if (ondemand) {
-    rc = largefile_begin(t);
-    if (rc == E_NOTIMPL) {                           // T14 not there yet: index now, with a modal progress
+    // 14.1: the indexer thread counts lines; meanwhile the hex view works and the text view shows the first screen
+    rc = largefile_begin_ex(t, o.line, 0);
+    if (rc != E_OK) {                                // the thread could not start: index now, with a modal progress
       UiProgress prog("Opening", "Indexing lines...", 1);
       t->indexing = 1;
       rc = index_sync(t, &prog);
       t->indexing = 0;
+      if (rc == E_OK && o.line > 1) {
+        epos p = d->line_start(o.line - 1);
+        if (p < d->text_origin()) p = d->text_origin();
+        t->sel.anchor = t->sel.caret = p;
+      }
     }
     if (rc != E_OK) {
       if (rc != E_CANCEL) report_open_error(path, rc);
@@ -475,7 +493,6 @@ int docio_open(const char* path_in, const OpenOpts* o_in, Tab** out)
       return rc;
     }
   }
-  show_open_bars(t, r);
   watch_tab_added(t);
   if (!o.from_session) config_mru_add(&g_app.cfg, path);
   if (t == app_active()) docio_view_refresh(t);
@@ -906,7 +923,15 @@ static int bom_len_for(Document* d, const EncSpec& e)
   return memcmp(head, bom, n) == 0 ? (int)n : 0;
 }
 
+// Reload (13.4, 13.9). The load mode follows the file's size now (T09 open issue): a file that grew past the on-demand
+// threshold becomes an on-demand document (indexed on the indexer thread), one that shrank below it goes back into
+// memory, so the Document's convert rules always match how its bytes are held.
 int docio_reload(Tab* t, const EncSpec* as_or_null, int undoable)
+{
+  return docio_reload_ex(t, as_or_null, undoable, 0);
+}
+
+int docio_reload_ex(Tab* t, const EncSpec* as_or_null, int undoable, int flags)
 {
   LoadOpts lo;
   LoadResult r;
@@ -914,26 +939,29 @@ int docio_reload(Tab* t, const EncSpec* as_or_null, int undoable)
   DocioInfo* info;
   Document* d;
   char text[300], old_copy[260];
-  int rc, was_ro_attr;
+  int rc, was_ro_attr, quiet = (flags & RL_QUIET) ? 1 : 0, async = 0, as_edit;
+  u32 top_line, top_sub, hscroll, hex_top;
   if (!t || !t->doc) return E_STATE;
   d = t->doc;
   if (t->saving || t->indexing || d->indexing()) {
-    app_status_note("Please wait until the save or indexing has finished");
+    if (!quiet) app_status_note("Please wait until the save or indexing has finished");
     return E_BUSY;
   }
   info = info_get(t);
   docio_place_get(t, &pl);
+  top_line = t->tv.top_line; top_sub = t->tv.top_subrow; hscroll = t->tv.hscroll; hex_top = t->hv.top_row;
   if (t->untitled || !t->path[0]) {                  // untitled: reinterpret the current bytes
     EncSpec e;
     if (!as_or_null) return E_STATE;
     e = *as_or_null;
+    if (!iothread_wait_tab(t->id, 30000)) return E_BUSY;   // a backup snapshot may still read the bytes (T13)
     {
       UiProgress prog("Reloading", "Decoding...", 0);
       int bl = bom_len_for(d, e);
       e.bom = (u8)(bl ? 1 : 0);
       rc = d->reinterpret(e, (epos)bl, &prog);
     }
-    if (rc != E_OK) { ui_error("The document could not be reinterpreted (%s).", e_errname(rc)); return rc; }
+    if (rc != E_OK) { if (!quiet) ui_error("The document could not be reinterpreted (%s).", e_errname(rc)); return rc; }
     if (info) { info->forced = e; info->has_forced = 1; }
     t->enc_forced = 1;
     docio_place_set(t, pl);
@@ -951,34 +979,81 @@ int docio_reload(Tab* t, const EncSpec* as_or_null, int undoable)
   }
   if (rc == E_CANCEL) return rc;
   if (rc != E_OK) {
+    if (quiet) return rc;
     if (rc == E_NOTFOUND) ui_error("%s no longer exists on disk. Your document is unchanged.", ui_path_name(t->path));
     else if (rc == E_SHARING) ui_error("%s is locked by another program. Your document is unchanged.", ui_path_name(t->path));
     else ui_error("%s could not be read (%s). Your document is unchanged.", ui_path_name(t->path), e_errname(rc));
     return rc;
   }
+  as_edit = undoable && !as_or_null && r.mode == LM_MEMORY && !t->ondemand && !t->fsrc &&
+            r.src->size() <= DOCIO_UNDOABLE_RELOAD_MAX && enc_equal(r.det.enc, d->enc()) &&
+            (r.det.eol_style == EOL_CR) == (d->eol_style() == EOL_CR) && !d->read_only();
+  if ((flags & RL_ASK_LOSSY) && !as_edit && d->modified()) {
+    char name[280];
+    tab_name(t, name, sizeof(name));
+    es_fmt(text, sizeof(text), "Reloading %s discards your changes, and this can't be undone.\n\nReload anyway?", name);
+    if (ui_ask(Q_RELOAD_DISCARD, text, MB_OKCANCEL | MB_ICONWARNING) != IDOK) { delete r.src; return E_CANCEL; }
+  }
+  if (!t->doc || app_tab_index(t) < 0) { delete r.src; return E_STATE; }   // the tab went away while we asked
+  // reset_source / init_source free the bytes a running backup snapshot reads (I/O thread): let it finish first
+  if (!iothread_wait_tab(t->id, 30000)) {
+    delete r.src;
+    if (!quiet) ui_error("%s can't be reloaded yet: a backup of it is still being written. Try again in a moment.",
+                         ui_path_name(t->path));
+    return E_BUSY;
+  }
   info = info_find(t->id);                           // the table may have moved while the progress window pumped
   was_ro_attr = t->ro_attr;
   old_copy[0] = 0;
   if (info && info->old_copy[0]) es_copy(old_copy, sizeof(old_copy), info->old_copy);
-  if (undoable && !as_or_null && r.mode == LM_MEMORY && !t->ondemand && r.src->size() <= DOCIO_UNDOABLE_RELOAD_MAX &&
-      enc_equal(r.det.enc, d->enc()) && (r.det.eol_style == EOL_CR) == (d->eol_style() == EOL_CR) && !d->read_only()) {
+  if (as_edit) {
     rc = d->reload_as_edit(r.src);                   // one undo step (13.4); does not take the source
     delete r.src;
     if (rc == E_OK) d->set_saved();
+  } else if (r.mode == LM_ONDEMAND) {
+    // On demand (also from in-memory): EV_RESET to an empty document (listeners drop their state; the old source is
+    // closed), then the file's pieces without counts, exactly like a fresh open; the indexer posts EV_INDEXED.
+    MemSource* empty = new MemSource();
+    if (!empty) { delete r.src; rc = E_NOMEM; }
+    else rc = d->reset_source(empty, d->enc(), 0, d->eol_style(), 0);        // takes 'empty'
+    if (rc != E_OK) {
+      if (empty) delete r.src;
+    } else {
+      t->fsrc = 0;                                   // deleted with the old source
+      rc = d->init_source_indexing(r.src, r.det.enc, r.det.bom_len, r.det.eol_style);   // takes r.src
+      if (rc != E_OK) {
+        t->ondemand = 0;
+        d->set_read_only(true);
+        if (!quiet) ui_error("%s could not be reloaded (%s). The tab is empty now: close it and open the file again.",
+                             ui_path_name(t->path), e_errname(rc));
+        docio_view_refresh(t);
+        return rc;
+      }
+      async = 1;
+    }
+  } else if (t->ondemand || t->fsrc) {
+    // back into memory: init_source leaves on-demand mode (silently), reset_source on the same source tells the
+    // listeners (EV_RESET with the recount)
+    UiProgress prog("Reloading", "Counting lines...", 1);
+    rc = d->init_source(r.src, r.det.enc, r.det.bom_len, r.det.eol_style, &prog);   // takes r.src
+    if (rc == E_OK) {
+      t->fsrc = 0;
+      rc = d->reset_source(d->source(), r.det.enc, r.det.bom_len, r.det.eol_style, &prog);
+      if (rc != E_OK) d->set_read_only(true);        // bytes are new but views may be stale: no edits
+    }
   } else {
     UiProgress prog("Reloading", "Counting lines...", 1);
     rc = d->reset_source(r.src, r.det.enc, r.det.bom_len, r.det.eol_style, &prog);   // takes the source
   }
   if (rc != E_OK) {
-    ui_error("%s could not be reloaded (%s). Your document is unchanged.", ui_path_name(t->path), e_errname(rc));
+    if (!quiet) ui_error("%s could not be reloaded (%s). Your document is unchanged.", ui_path_name(t->path), e_errname(rc));
     return rc;
   }
-  // T14 note: the Document keeps its in-memory / on-demand mode across reset_source; a file that crossed the
-  // on-demand threshold keeps the old mode's rules (convert allowed / refused) until it is reopened.
   info = info_find(t->id);
   t->ondemand = (u8)(r.mode == LM_ONDEMAND ? 1 : 0);
   t->fsrc = t->ondemand ? (FileSource*)d->source() : 0;
   t->large = (u8)(t->ondemand || r.st.size_lo >= (u32)g_app.cfg.large_mb * DOCIO_MB ? 1 : 0);
+  if (t->large) t->tv.wrap = 0;
   t->disk = r.st;
   t->disk_missing = 0;
   t->change_pending = 0;
@@ -994,9 +1069,38 @@ int docio_reload(Tab* t, const EncSpec* as_or_null, int undoable)
     fs_os()->remove(old_copy);
     if (info) info->old_copy[0] = 0;
   }
-  docio_set_lang(t, t->lang, t->lang_forced);        // large-mode gate may have changed
-  docio_place_set(t, pl);
+  set_lang_(t, t->lang, t->lang_forced, 0);          // large-mode gate may have changed; tab settings stay
   watch_tab_saved(t);                                // the disk state we now hold
+  if (async) {
+    largefile_tab_added(t);                          // one-time "not backed up" note for on-demand documents
+    t->sel.anchor = t->sel.caret = d->text_origin();
+    t->tv.top_line = 0; t->tv.top_subrow = 0; t->tv.hscroll = 0;
+    t->hv.top_row = hex_top;
+    if (largefile_begin_ex(t, 0, &pl) != E_OK) {     // no thread: index now
+      UiProgress prog("Reloading", "Indexing lines...", 1);
+      t->indexing = 1;
+      rc = index_sync(t, &prog);
+      t->indexing = 0;
+      if (rc != E_OK) {
+        d->set_read_only(true);
+        if (!quiet) ui_error("%s could not be indexed (%s). Close the tab and open the file again.",
+                             ui_path_name(t->path), e_errname(rc));
+      } else {
+        docio_place_set(t, pl);
+      }
+    }
+    docio_view_refresh(t);
+    app_on_doc_changed(t);
+    return E_OK;
+  }
+  docio_place_set(t, pl);
+  {                                                  // keep the scroll position (clamped by the views)
+    u32 n = d->line_count();
+    t->tv.top_line = top_line < n ? top_line : (n ? n - 1 : 0);
+    t->tv.top_subrow = top_line < n ? top_sub : 0;
+    t->tv.hscroll = hscroll;
+    t->hv.top_row = hex_top;
+  }
   docio_view_refresh(t);
   app_on_doc_changed(t);
   return E_OK;
@@ -1507,6 +1611,10 @@ static void st_ondemand(StCtx* c)
   t = st_open(c, path);
   g_app.cfg.ondemand_mb = saved_mb;
   if (!t) { st_remove(path); return; }
+  {                                                  // the indexer thread (T14) finishes in the background
+    u32 start = GetTickCount();
+    while ((t->indexing || t->doc->indexing()) && GetTickCount() - start < 60000) st_pump(c, 20);
+  }
   st_checkf(c, t->ondemand && t->fsrc && t->large && !t->doc->indexing(), "5 MB opens on demand and is indexed");
   st_checkf(c, t->doc->line_count() == lines + 1, "on-demand line count %u (want %u)", t->doc->line_count(), lines + 1);
   rc = t->doc->replace(100, 0, (const u8*)"OD1", 3);

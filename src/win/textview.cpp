@@ -2100,6 +2100,40 @@ void textview_caret_info(HWND w, CaretInfo* out)
   }
 }
 
+int textview_pos_rect(HWND w, epos pos, RECT* screen)
+{
+  TV* v = tv_get(w);
+  u32 line, sub, cell, rc0, ci, next_cell;
+  int r, aff, x;
+  POINT p;
+  if (!screen) return 0;
+  SetRectEmpty(screen);
+  if (!v || !v->t || !v->d || v->d->indexing() || !v->ch || !v->cw) return 0;
+  if (pos < v->d->text_origin()) pos = v->d->text_origin();
+  if (pos > v->d->length()) pos = v->d->length();
+  pos = v->d->snap_char(pos);
+  rmap_build(v);
+  aff = v->affinity;
+  v->affinity = 0;                                 // a match start sits at the start of its wrap row
+  pos_rowcell(v, pos, &line, &sub, &cell, &rc0);
+  v->affinity = aff;
+  r = rmap_find(v, line, sub);
+  if (r < 0) return 0;
+  next_cell = cell + 1;                            // cell width of the character (2 for wide ones)
+  if (pos >= v->sg_pos) {
+    ci = v->lay.char_at_offset(pos - v->sg_pos);
+    if (ci < v->lay.count() && v->lay.chars()[ci].cell == cell && v->lay.chars()[ci].width > 1)
+      next_cell = cell + v->lay.chars()[ci].width;
+  }
+  x = v->text_left + ((int)cell - (int)tv_left_cell(v, rc0)) * v->cw;
+  p.x = x; p.y = r * v->ch;
+  ClientToScreen(w, &p);
+  screen->left = p.x; screen->top = p.y;
+  screen->right = p.x + (int)(next_cell - cell) * v->cw;
+  screen->bottom = p.y + v->ch;
+  return 1;
+}
+
 void textview_set_panel_handler(HWND w, PanelHandler* h)
 {
   TV* v = tv_get(w);

@@ -18,5 +18,8 @@ int  results_visible();
 HWND isearch_create(HWND parent);        // the incremental search bar (created hidden by the frame)
 void isearch_show();
 void isearch_hide();
+// Message-loop hooks (main.cpp app_dispatch, before the main accelerators): nonzero = the message was handled.
+int  isearch_translate(MSG* m);          // editing keys typed into the incremental search box stay there
+int  results_translate(MSG* m);          // Ctrl+C / Ctrl+Ins / Ctrl+A in the results panel act on the panel
 
 #endif

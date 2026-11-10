@@ -11,6 +11,7 @@
 #include "selftest.h"
 #include "frame_int.h"
 #include "codec.h"
+#include "detect.h"
 #include "lexer.h"
 #include "estr.h"
 #include "resource.h"
@@ -20,6 +21,9 @@ static int g_widths[2][SB_PARTS - 1];       // part widths for the text view and
 static int g_cur_set = -1, g_cur_w = -1;
 static char g_note[300];
 static char g_text[SB_PARTS][160];          // what each part shows now (only changed parts are sent)
+static int g_simple;                        // a note too long for the last part fills the whole bar (SB_SIMPLE)
+
+static void note_fit();
 
 static int text_w(HDC dc, const char* s)
 {
@@ -82,6 +86,39 @@ void statusbar_layout()
   for (i = 0; i < SB_PARTS - 1; i++) { x += g_widths[set][i]; edges[i] = x; }
   edges[SB_PARTS - 1] = -1;
   SendMessageA(g_app.statusbar, SB_SETPARTS, SB_PARTS, (LPARAM)edges);
+  note_fit();
+}
+
+// Width the last part has for text: its rectangle minus the borders and the size grip.
+static int last_part_room()
+{
+  RECT r;
+  int w;
+  if (!SendMessageA(g_app.statusbar, SB_GETRECT, (WPARAM)(SB_PARTS - 1), (LPARAM)&r)) return 0;
+  w = r.right - r.left - 8;
+  if (!IsZoomed(g_app.frame)) w -= GetSystemMetrics(SM_CXVSCROLL);   // size grip
+  return w;
+}
+
+// A note that doesn't fit the last part is shown across the whole bar (simple mode, like Explorer's menu help)
+// until it expires; a short note stays in the last part with the other parts visible.
+static void note_fit()
+{
+  int want = 0;
+  if (!g_app.statusbar) return;
+  if (g_note[0] && IsWindowVisible(g_app.statusbar)) {
+    HDC dc = GetDC(g_app.statusbar);
+    HFONT f = (HFONT)SendMessageA(g_app.statusbar, WM_GETFONT, 0, 0);
+    HFONT old = (HFONT)SelectObject(dc, f ? f : (HFONT)GetStockObject(DEFAULT_GUI_FONT));
+    want = text_w(dc, g_note) > last_part_room();
+    SelectObject(dc, old);
+    ReleaseDC(g_app.statusbar, dc);
+  }
+  if (want) SendMessageA(g_app.statusbar, SB_SETTEXTA, (WPARAM)255, (LPARAM)g_note);
+  if (want != g_simple) {
+    g_simple = want;
+    SendMessageA(g_app.statusbar, SB_SIMPLE, (WPARAM)(want ? TRUE : FALSE), 0);
+  }
 }
 
 void statusbar_set(int part, const char* text)
@@ -103,6 +140,7 @@ static void note_v(u32 ms, const char* fmt, va_list ap)
 {
   es_vfmt(g_note, sizeof(g_note), fmt, ap);
   statusbar_set(SB_PART_FLAGS, g_note);
+  note_fit();
   selftest_log("note: %s", g_note);
   if (g_app.frame) SetTimer(g_app.frame, TIMER_NOTE, ms, 0);
 }
@@ -127,6 +165,7 @@ void statusbar_note_expired()
 {
   if (g_app.frame) KillTimer(g_app.frame, TIMER_NOTE);
   g_note[0] = 0;
+  note_fit();
   app_update_status();
 }
 
@@ -143,6 +182,26 @@ static void fmt_num(u32 v, char* out, u32 cap)
   }
   tmp[k] = 0;
   es_copy(out, cap, tmp);
+}
+
+// NUL bytes in the first 4 KB (and not UTF-16): a binary file, whose "line endings" mean nothing. Cached per tab and
+// length, so moving the caret doesn't re-read the document.
+static int looks_binary(Tab* t)
+{
+  static u32 s_id = 0xFFFFFFFF;
+  static epos s_len = 0;
+  static int s_bin = 0;
+  u8 sample[4096];
+  epos len = t->doc->length(), n;
+  if (t->doc->indexing()) return 0;
+  if (t->id == s_id && len == s_len) return s_bin;
+  if (t->doc->enc().kind == EK_UTF16LE || t->doc->enc().kind == EK_UTF16BE) { s_bin = 0; }
+  else {
+    n = len < (epos)sizeof(sample) ? len : (epos)sizeof(sample);
+    s_bin = n && t->doc->read(0, sample, n) == E_OK && detect_is_binary(sample, (u32)n);
+  }
+  s_id = t->id; s_len = len;
+  return s_bin;
 }
 
 static void flag_add(char* out, u32 cap, const char* s)
@@ -204,7 +263,8 @@ void app_update_status()
   statusbar_set(SB_PART_LANG, t->lang ? t->lang->name : "Plain text");
   enc_label(t->doc->enc(), buf, sizeof(buf));
   statusbar_set(SB_PART_ENC, buf);
-  if (t->doc->eol_mixed()) es_copy(buf, sizeof(buf), "Mixed");
+  if ((hex || t->doc->eol_mixed()) && looks_binary(t)) es_copy(buf, sizeof(buf), "-");   // no lines in a binary
+  else if (t->doc->eol_mixed()) es_copy(buf, sizeof(buf), "Mixed");
   else {
     EolStyle e = t->doc->eol_style();
     es_copy(buf, sizeof(buf), e == EOL_LF ? "LF" : e == EOL_CR ? "CR" : "CRLF");
@@ -247,6 +307,7 @@ int statusbar_part_at(int x)
   int i;
   RECT r;
   if (!g_app.statusbar) return -1;
+  if (g_simple) statusbar_note_expired();          // a click on a long note dismisses it and hits the part below
   for (i = 0; i < SB_PARTS; i++) {
     if (!SendMessageA(g_app.statusbar, SB_GETRECT, (WPARAM)i, (LPARAM)&r)) continue;
     if (x >= r.left && x < r.right) return i;
