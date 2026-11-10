@@ -12,4 +12,10 @@ int  render_is_raster();
 void render_refresh_colors();            // re-read g_app.cfg colours and system colours
 void render_font_desc(char* out, u32 cap);   // "Courier New 10 pt (8x16)" for logs
 
+// GDI object accounting (Win98 has no GetGuiResources): every font, brush, pen, region and bitmap the win modules
+// create goes through gdi_track and is deleted with gdi_delete, so tests can check that the live count doesn't grow.
+HGDIOBJ gdi_track(HGDIOBJ o);            // counts o if non-NULL; returns o
+BOOL gdi_delete(HGDIOBJ o);              // DeleteObject + uncount (NULL is ignored)
+int  gdi_live();                         // objects created and not deleted yet
+
 #endif

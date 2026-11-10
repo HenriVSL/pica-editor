@@ -118,12 +118,11 @@ static void status_text(int err, const char* text)
   es_copy(g_status, sizeof(g_status), text);
   g_status_err = err;
   selftest_log("find: %s%s", err ? "[error] " : "", text);
-  if (g_dlg && IsWindowVisible(g_dlg)) {
+  if (g_dlg) {                                     // also while hidden: a reopened dialog must not show old text
     SetDlgItemTextA(g_dlg, IDC_FIND_STATUS, text);
     InvalidateRect(GetDlgItem(g_dlg, IDC_FIND_STATUS), 0, TRUE);
-  } else if (text[0]) {
-    app_status_note("%s", text);
   }
+  if ((!g_dlg || !IsWindowVisible(g_dlg)) && text[0]) app_status_note("%s", text);
 }
 
 static void status(int err, const char* fmt, ...)
@@ -270,14 +269,22 @@ static void avoid_match(Tab* t, epos pos)
   const RenderFonts* f = render_fonts();
   int lh = f && f->ch > 0 ? f->ch : 16, my, h, ny;
   long row;
+  RECT pr;
   if (!g_dlg || !IsWindowVisible(g_dlg) || !v || !IsWindowVisible(v)) return;
   GetWindowRect(g_dlg, &dr);
   GetWindowRect(v, &vr);
-  if (t->view == VIEW_HEX) row = (long)(pos / 16) - (long)t->hv.top_row + 1;
-  else row = (long)t->doc->line_of(pos) - (long)t->tv.top_line;
-  my = vr.top + (int)row * lh;
-  if (row < 0 || my + lh > vr.bottom) my = (vr.top + vr.bottom) / 2;   // view scrolled: assume it centred the match
-  if (my + lh < dr.top || my > dr.bottom || vr.right < dr.left || vr.left > dr.right) return;
+  if (t->view != VIEW_HEX && textview_pos_rect(v, pos, &pr)) {
+    my = pr.top;                                   // exact (word wrap and scrolling included)
+    lh = pr.bottom - pr.top;
+    if (pr.right < dr.left || pr.left > dr.right) return;   // the match is beside the dialog
+  } else {
+    if (t->view == VIEW_HEX) row = (long)(pos / 16) - (long)t->hv.top_row + 1;
+    else row = (long)t->doc->line_of(pos) - (long)t->tv.top_line;
+    my = vr.top + (int)row * lh;
+    if (row < 0 || my + lh > vr.bottom) my = (vr.top + vr.bottom) / 2;   // not on screen yet: assume it is centred
+    if (vr.right < dr.left || vr.left > dr.right) return;
+  }
+  if (my + lh < dr.top || my > dr.bottom) return;
   h = dr.bottom - dr.top;
   SystemParametersInfoA(SPI_GETWORKAREA, 0, &wa, 0);
   ny = my - h - 8;
@@ -635,6 +642,7 @@ static void layout_page(int page)
   int fif = page == PAGE_FIF, mx = fif ? 10 : 66, mw = fif ? 248 : 192, defid;
   RECT r;
   DWORD st, ex;
+  if (page != g_page && !(page == PAGE_FIF && fif_running())) status(0, "");   // a result of another page
   g_page = page;
   place(IDC_FIND_WHAT_LBL, 10, R0 + 2, 50, 8, 1);
   place(IDC_FIND_WHAT, 62, R0, 180, 140, 1);
@@ -922,38 +930,61 @@ static void validate_now()
   }
 }
 
-struct TokItem { const char* label; const char* ins; int back; };
+struct TokItem { const char* label; const char* ins; int back; int group; };
+// Find tokens are grouped into submenus so the menu fits an 800x600 screen.
+static const char* const k_tok_groups[] = { "&Characters", "&Anchors", "&Repeat", "&Groups", "&Look-ahead and flags" };
 static const TokItem k_find_tok[] = {
-  { ".\tAny character", ".", 0 }, { "\\d\tDigit", "\\d", 0 }, { "\\w\tWord character", "\\w", 0 },
-  { "\\s\tWhitespace", "\\s", 0 }, { "\\D \\W \\S\tNot a digit / word char / space", "\\W", 0 },
-  { "[...]\tAny of these characters", "[]", 1 }, { "[^...]\tNone of these characters", "[^]", 1 },
-  { "^\tStart of line", "^", 0 }, { "$\tEnd of line", "$", 0 }, { "\\b\tWord boundary", "\\b", 0 },
-  { "(...)\tGroup (\\1 in replace)", "()", 1 }, { "(?:...)\tGroup without a number", "(?:)", 1 },
-  { "|\tOr", "|", 0 }, { "*\t0 or more times", "*", 0 }, { "+\t1 or more times", "+", 0 },
-  { "?\t0 or 1 time", "?", 0 }, { "{n,m}\tn to m times", "{1,3}", 0 }, { "*?\t0 or more, as few as possible", "*?", 0 },
-  { "+?\t1 or more, as few as possible", "+?", 0 }, { "\\1\tText of group 1 again", "\\1", 0 },
-  { "\\t\tTab", "\\t", 0 }, { "\\R\tLine break (CRLF, LF or CR)", "\\R", 0 }, { "\\x{HHHH}\tCharacter code", "\\x{}", 1 },
-  { "(?i)\tIgnore case from here", "(?i)", 0 }, { "(?=...)\tFollowed by", "(?=)", 1 }, { "(?!...)\tNot followed by", "(?!)", 1 }
+  { ".\tAny character", ".", 0, 0 }, { "\\d\tDigit", "\\d", 0, 0 }, { "\\w\tWord character", "\\w", 0, 0 },
+  { "\\s\tWhitespace", "\\s", 0, 0 }, { "\\D \\W \\S\tNot a digit / word char / space", "\\W", 0, 0 },
+  { "[...]\tAny of these characters", "[]", 1, 0 }, { "[^...]\tNone of these characters", "[^]", 1, 0 },
+  { "\\t\tTab", "\\t", 0, 0 }, { "\\R\tLine break (CRLF, LF or CR)", "\\R", 0, 0 },
+  { "\\x{HHHH}\tCharacter code", "\\x{}", 1, 0 },
+  { "^\tStart of line", "^", 0, 1 }, { "$\tEnd of line", "$", 0, 1 }, { "\\b\tWord boundary", "\\b", 0, 1 },
+  { "*\t0 or more times", "*", 0, 2 }, { "+\t1 or more times", "+", 0, 2 }, { "?\t0 or 1 time", "?", 0, 2 },
+  { "{n,m}\tn to m times", "{1,3}", 0, 2 }, { "*?\t0 or more, as few as possible", "*?", 0, 2 },
+  { "+?\t1 or more, as few as possible", "+?", 0, 2 },
+  { "(...)\tGroup (\\1 in replace)", "()", 1, 3 }, { "(?:...)\tGroup without a number", "(?:)", 1, 3 },
+  { "|\tOr", "|", 0, 3 }, { "\\1\tText of group 1 again", "\\1", 0, 3 },
+  { "(?=...)\tFollowed by", "(?=)", 1, 4 }, { "(?!...)\tNot followed by", "(?!)", 1, 4 },
+  { "(?i)\tIgnore case from here", "(?i)", 0, 4 }
 };
 static const TokItem k_repl_tok[] = {
-  { "$0\tThe whole match", "$0", 0 }, { "$1\tGroup 1", "$1", 0 }, { "$2\tGroup 2", "$2", 0 }, { "$3\tGroup 3", "$3", 0 },
-  { "\\n\tNew line (LF)", "\\n", 0 }, { "\\r\\n\tNew line (CRLF)", "\\r\\n", 0 }, { "\\t\tTab", "\\t", 0 },
-  { "\\U...\\E\tUPPER CASE", "\\U\\E", 2 }, { "\\L...\\E\tlower case", "\\L\\E", 2 }, { "\\u\tNext character upper case", "\\u", 0 },
-  { "\\l\tNext character lower case", "\\l", 0 }, { "$$\tA dollar sign", "$$", 0 }
+  { "$0\tThe whole match", "$0", 0, 0 }, { "$1\tGroup 1", "$1", 0, 0 }, { "$2\tGroup 2", "$2", 0, 0 },
+  { "$3\tGroup 3", "$3", 0, 0 }, { "\\n\tNew line (LF)", "\\n", 0, 0 }, { "\\r\\n\tNew line (CRLF)", "\\r\\n", 0, 0 },
+  { "\\t\tTab", "\\t", 0, 0 }, { "\\U...\\E\tUPPER CASE", "\\U\\E", 2, 0 }, { "\\L...\\E\tlower case", "\\L\\E", 2, 0 },
+  { "\\u\tNext character upper case", "\\u", 0, 0 }, { "\\l\tNext character lower case", "\\l", 0, 0 },
+  { "$$\tA dollar sign", "$$", 0, 0 }
 };
+
+// Builds the token popup (find: one submenu per group; replace: flat, 12 entries) and returns it.
+static HMENU token_popup(int field, const TokItem* items, u32 n)
+{
+  HMENU m = CreatePopupMenu();
+  u32 i, g;
+  if (!m) return 0;
+  if (field == IDC_FIND_WHAT) {
+    for (g = 0; g < sizeof(k_tok_groups) / sizeof(k_tok_groups[0]); g++) {
+      HMENU sub = CreatePopupMenu();
+      if (!sub) continue;
+      for (i = 0; i < n; i++) if (items[i].group == (int)g) AppendMenuA(sub, MF_STRING, IDM_TOK_FIRST + i, items[i].label);
+      AppendMenuA(m, MF_POPUP, (UINT)sub, k_tok_groups[g]);   // m owns sub from here
+    }
+  } else {
+    for (i = 0; i < n; i++) AppendMenuA(m, MF_STRING, IDM_TOK_FIRST + i, items[i].label);
+  }
+  AppendMenuA(m, MF_SEPARATOR, 0, 0);
+  AppendMenuA(m, MF_STRING, IDM_TOK_HELP, "Regular expression &help...");
+  return m;
+}
 
 static void token_menu(int field, int button)
 {
-  HMENU m = CreatePopupMenu();
   const TokItem* items = field == IDC_FIND_WHAT ? k_find_tok : k_repl_tok;
   u32 n = field == IDC_FIND_WHAT ? sizeof(k_find_tok) / sizeof(k_find_tok[0]) : sizeof(k_repl_tok) / sizeof(k_repl_tok[0]);
-  u32 i;
+  HMENU m = token_popup(field, items, n);
   RECT r;
   int id;
   if (!m) return;
-  for (i = 0; i < n; i++) AppendMenuA(m, MF_STRING, IDM_TOK_FIRST + i, items[i].label);
-  AppendMenuA(m, MF_SEPARATOR, 0, 0);
-  AppendMenuA(m, MF_STRING, IDM_TOK_HELP, "Regular expression help...");
   GetWindowRect(GetDlgItem(g_dlg, button), &r);
   id = (int)TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON, r.left, r.bottom, 0,
                            g_dlg, 0);
@@ -1229,6 +1260,18 @@ void finddlg_open(int page)
   int was_visible;
   if (!dlg_ensure()) { ui_error("Could not open the Find dialog."); return; }
   was_visible = IsWindowVisible(g_dlg);
+  if (was_visible && GetActiveWindow() == g_dlg) {
+    // Ctrl+F / Ctrl+H / Ctrl+Shift+F pressed inside the dialog (IDA_FIND): switch the page like a tab click and keep
+    // what the user typed.
+    if (page != g_page) {
+      layout_page(page);
+      if (page == PAGE_FIF) prefill_fif(t);
+    }
+    SetFocus(GetDlgItem(g_dlg, IDC_FIND_WHAT));
+    SendDlgItemMessageA(g_dlg, IDC_FIND_WHAT, CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+    SetTimer(g_dlg, TIMER_VALIDATE, 200, 0);
+    return;
+  }
   layout_page(page);
   if (page == PAGE_FIF) prefill_fif(t);
   prefill(t, page);
@@ -1368,6 +1411,14 @@ static void st_set(const char* pat, const char* rep, int mode, int mcase, int wo
   g_fs.opts.mode = (u8)mode; g_fs.opts.match_case = (u8)mcase; g_fs.opts.whole_word = (u8)word; g_fs.opts.dot_all = 0;
   g_fs.wrap = 1; g_fs.up = 0; g_fs.insel = 0; g_fs.scope_on = 0; g_fs.last_valid = 0;
   g_field_text[0] = 0;
+}
+
+// bench.cpp: Find Next (op 0) or Replace All (op 1) on t with this pattern (UTF-8), the way the dialog runs them.
+int finddlg_bench(Tab* t, const char* pat, const char* rep, int mode, int match_case, int op)
+{
+  if (!t) return E_STATE;
+  st_set(pat, rep ? rep : "", mode, match_case, 0);
+  return op == 0 ? op_find(t, 0) : op_replace_all(t);
 }
 
 static int st_doc_is(Tab* t, const char* want)

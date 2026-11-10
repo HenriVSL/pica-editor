@@ -30,6 +30,8 @@ private:                          // private state: T01 may change freely
   AddBuffer(const AddBuffer&); AddBuffer& operator=(const AddBuffer&);
 };
 
+struct PtLineCache; struct PtLcEntry;   // private to ptree.cpp (T16 line-start cache)
+
 class PieceTree {                 // treap with split/merge; nodes in a pool; subtree sums of len and nbreaks
 public:
   PieceTree();  ~PieceTree();
@@ -60,7 +62,9 @@ public:
   int  count_refs(PieceRef* refs, u32 n);                        // set nbreaks + spec tag for the current spec
   void swap(PieceTree& o);                                       // exchange whole trees (incl. add buffers)
   u32  stamp() const;                                            // changes on every mutation and original->get()
-private:                          // private state: T01 may change freely
+  // T16 additions
+  u32  line_cache_bytes() const;                                 // memory held by the line-start cache (tests)
+private:                          // private state: T01/T16 may change freely
   struct Node { u32 l, r, prio; u32 start, len, nb; u32 slen, snb; u16 src, flags; };
   Vec<Node> pool_; u32 root_; u32 free_head_; u32 free_n_; u32 rng_; u32 npieces_; u32 stamp_;
   ByteSource* orig_; BreakSpec bs_; AddBuffer add_;
@@ -78,6 +82,10 @@ private:                          // private state: T01 may change freely
   void collect_(u32 t, PieceVec* out) const;  u32 count_nodes_(u32 t) const;
   int  check_(u32 t, u32 maxprio, u32* nodes, u32* len, u32* nb, epos base, char* why, u32 cap, int recount);
   u16  tag_() const;  int aligned_(epos pos, epos n, int last_odd_ok) const;
+  PtLineCache* lc_;               // T16: line-start cache (sparse break counts per 512 source bytes), see ptree.cpp
+  void lc_drop_();  PtLcEntry* lc_entry_(u16 src, u32 blk);  int lc_extend_(PtLcEntry* e, u32 need);
+  int  lc_count_(u16 src, u32 start, u32 len, u32* out);
+  int  lc_find_(u16 src, u32 start, u32 len, u32 k, u32* rel);
   PieceTree(const PieceTree&); PieceTree& operator=(const PieceTree&);
 };
 

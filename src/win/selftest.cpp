@@ -22,6 +22,7 @@
 #include "fifworker.h"
 #include "iothread.h"
 #include "clip.h"
+#include "render_int.h"
 
 static StCtx* g_ctx = 0;
 static char g_log_path[260];
@@ -1391,11 +1392,60 @@ static void sc_altgr(StCtx* c)
   sc_close(c, t);
 }
 
+// 11. T17 fixes: Ctrl+F / Ctrl+H / Ctrl+Shift+F inside the Find dialog switch its page and keep the typed text;
+// opening and closing 30 tabs (text and hex views, notification bars) leaves no GDI object behind.
+static void sc_t17(StCtx* c)
+{
+  static const char text[] = "alpha beta gamma\r\n";
+  char path[300], cap[80], what[80], name[40];
+  int g0, g1, i;
+  Tab* t = sc_open(c, "sc_t17.txt", text, sizeof(text) - 1, path, sizeof(path));
+  if (!t) return;
+  st_keys(c, "^{HOME}^f");
+  if (!g_app.find_dlg || !IsWindowVisible(g_app.find_dlg)) { st_checkf(c, 0, "t17: Ctrl+F opens the dialog"); sc_close(c, t); return; }
+  st_keys(c, "zeta^h");
+  GetWindowTextA(g_app.find_dlg, cap, sizeof(cap));
+  GetDlgItemTextA(g_app.find_dlg, IDC_FIND_WHAT, what, sizeof(what));
+  st_checkf(c, strcmp(cap, "Replace") == 0 && strcmp(what, "zeta") == 0, "t17: Ctrl+H in the dialog -> %s, \"%s\"",
+            cap, what);
+  st_keys(c, "^+f");
+  GetWindowTextA(g_app.find_dlg, cap, sizeof(cap));
+  GetDlgItemTextA(g_app.find_dlg, IDC_FIND_WHAT, what, sizeof(what));
+  st_checkf(c, strcmp(cap, "Find in Files") == 0 && strcmp(what, "zeta") == 0,
+            "t17: Ctrl+Shift+F in the dialog -> %s, \"%s\"", cap, what);
+  st_keys(c, "^f");
+  GetWindowTextA(g_app.find_dlg, cap, sizeof(cap));
+  st_checkf(c, strcmp(cap, "Find") == 0, "t17: Ctrl+F in the dialog -> %s", cap);
+  st_keys(c, "{ESC}");
+  ST_CHECK(c, !IsWindowVisible(g_app.find_dlg), "t17: Esc closes the dialog");
+  SC_TEXT(c, t, text, "t17: the document is unchanged");
+  sc_close(c, t);
+  // GDI objects: our own count (Win98 has no GetGuiResources)
+  st_wait_idle(c, 2000);
+  g0 = gdi_live();
+  for (i = 0; i < 30; i++) {
+    Tab* x;
+    es_fmt(name, sizeof(name), "sc_gdi%02d.txt", i);
+    x = sc_open(c, name, text, sizeof(text) - 1, path, sizeof(path));
+    if (!x) break;
+    if (i % 3 == 0) st_cmd(c, IDM_VIEW_HEX);
+    if (i % 5 == 0) notifybar_show(x, NB_INFO, "selftest note", 0, 0, 0, 0);
+    UpdateWindow(g_app.frame);
+  }
+  for (i = app_tab_count() - 1; i >= 0; i--)
+    if (strstr(app_tab(i)->path, "sc_gdi")) docio_close(app_tab(i), 0);
+  st_pump(c, 50);
+  g1 = gdi_live();
+  st_checkf(c, g1 <= g0, "t17: GDI objects %d before, %d after 30 tabs", g0, g1);
+  log_line(c, "  t17: GDI objects live %d before, %d after 30 tabs", g0, g1);
+}
+
 struct ScEntry { const char* name; void (*fn)(StCtx*); };
 static const ScEntry k_sc[] = {
     { "save cycle", sc_save_cycle }, { "hex switch", sc_hex_switch }, { "find/replace", sc_find_replace },
     { "encoding", sc_encoding }, { "line commands", sc_lines }, { "bookmarks", sc_bookmarks }, { "go to", sc_goto },
-    { "help", sc_help }, { "accelerator audit", sc_accel_audit }, { "altgr", sc_altgr }
+    { "help", sc_help }, { "accelerator audit", sc_accel_audit }, { "altgr", sc_altgr },
+    { "t17 fixes", sc_t17 }
 };
 
 void st_scenarios(StCtx* c)

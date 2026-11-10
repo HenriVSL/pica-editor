@@ -673,6 +673,7 @@ static void test_windowed(TF* tf)
     const char* piece = r == 0 ? "foo" : r == 1 ? "\r\n" : r == 2 ? "\n" : r == 3 ? "x" : r == 4 ? "y" : r == 5 ? "\xC3\xA9" : "ab";
     b.append(piece, es_len(piece));
   }
+  b.append("\nxfooy\r\nfoo\r\nf\n", 15);   // T16: every pattern has a hit whatever the seed (-long failed ~1 in 5)
   put_file(tf, "fif2/big.txt", b.data(), b.size());
   for (k = 0; k < 3; k++) {
     query(tf, q, "fif2", "*.txt", pats[k], k ? SM_REGEX : SM_NORMAL, 1);

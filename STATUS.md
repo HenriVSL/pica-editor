@@ -44,6 +44,6 @@ crash path); polling for changes (Mac-side edits on M: never notify); new files 
 | 1 | T01 buffer, T02 codecs, T03 regex + search, T04 lexers, T05 file I/O, T06 layout/hex format/ini/session (core, Mac-tested) | done (112,926 checks Mac + VC6) |
 | 2 | T07 frame, T08 text view, T09 files + document commands, T10 hex view, T11 search UI + find in files, T12 edit commands + dialogs | done (selftest 9/9, 0 warnings) |
 | 3 | T13 session/backup/recovery, T14 disk events + large files, T15 selftest suite + shortcuts + help, I1 integration of Wave 2 requests | done (selftest 13/13) |
-| 4 | T16 core QA, T17 win QA + performance, then T18 release (README, zip) | planned |
+| 4 | T16 core QA, T17 win QA + performance, then T18 release (README, zip) | T16 core QA, T17 win QA, T19 installer done; T18 release running |
 
 Milestones for the user: after Wave 2 a usable editor; after Wave 3 the full 1.0; after Wave 4 the release zip.

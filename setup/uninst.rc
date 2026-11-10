@@ -1,0 +1,8 @@
+// uninst.rc - resources of uninst.exe (T19): no payload, so it always uninstalls. CRLF, ASCII.
+#include <windows.h>
+#include "appinfo.h"
+#include "setup_ids.h"
+
+#define SETUP_DESC APP_NAME " uninstaller"
+#define SETUP_FILE "uninst.exe"
+#include "setupver.rc2"

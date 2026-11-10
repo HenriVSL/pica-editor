@@ -8,6 +8,7 @@
 #include <commdlg.h>
 #include <stddef.h>
 #include "app.h"
+#include "render_int.h"
 #include "tab.h"
 #include "cmds.h"
 #include "ui.h"
@@ -158,17 +159,17 @@ static void opt_draw_sample(const DRAWITEMSTRUCT* di, int item)
   else { fg = col_resolve(item); bg = GetSysColor(COLOR_WINDOW); }
   if (!k_cols[item].style && k_cols[item].idx == UIC_GUTTER_FG) bg = GetSysColor(COLOR_3DFACE);
   DrawEdge(dc, &r, EDGE_SUNKEN, BF_RECT | BF_ADJUST);
-  br = CreateSolidBrush(bg);
-  FillRect(dc, &r, br);
-  DeleteObject(br);
-  f = CreateFontA(h, 0, 0, 0, bold ? FW_BOLD : FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+  br = (HBRUSH)gdi_track(CreateSolidBrush(bg));
+  if (br) FillRect(dc, &r, br);
+  gdi_delete(br);
+  f = (HFONT)gdi_track(CreateFontA(h, 0, 0, 0, bold ? FW_BOLD : FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
                   CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN,
-                  g_o.font_face[0] ? g_o.font_face : "Courier New");
+                  g_o.font_face[0] ? g_o.font_face : "Courier New"));
   if (f) old = (HFONT)SelectObject(dc, f);
   SetTextColor(dc, fg);
   SetBkMode(dc, TRANSPARENT);
   DrawTextA(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-  if (f) { SelectObject(dc, old); DeleteObject(f); }
+  if (f) { SelectObject(dc, old); gdi_delete(f); }
 }
 
 static void opt_draw_swatch(const DRAWITEMSTRUCT* di, COLORREF c)
@@ -176,9 +177,9 @@ static void opt_draw_swatch(const DRAWITEMSTRUCT* di, COLORREF c)
   RECT r = di->rcItem;
   HBRUSH br;
   DrawEdge(di->hDC, &r, EDGE_SUNKEN, BF_RECT | BF_ADJUST);
-  br = CreateSolidBrush(c);
-  FillRect(di->hDC, &r, br);
-  DeleteObject(br);
+  br = (HBRUSH)gdi_track(CreateSolidBrush(c));
+  if (br) FillRect(di->hDC, &r, br);
+  gdi_delete(br);
 }
 
 static int col_index_of_ui(int uic)
@@ -220,12 +221,12 @@ static int font_choose(HWND h)
   es_copy(g_o.font_face, sizeof(g_o.font_face), lf.lfFaceName);
   g_o.font_pt = cf.iPointSize > 0 ? (cf.iPointSize + 5) / 10 : 10;
   g_o.font_px = 0;
-  f = CreateFontIndirectA(&lf);                    // raster fonts (Fixedsys, Terminal) keep their pixel height
+  f = (HFONT)gdi_track(CreateFontIndirectA(&lf));   // raster fonts (Fixedsys, Terminal) keep their pixel height
   if (f) {
     old = (HFONT)SelectObject(dc, f);
     if (GetTextMetricsA(dc, &tm) && !(tm.tmPitchAndFamily & (TMPF_TRUETYPE | TMPF_VECTOR))) g_o.font_px = tm.tmHeight;
     SelectObject(dc, old);
-    DeleteObject(f);
+    gdi_delete(f);
   }
   ReleaseDC(h, dc);
   return 1;
@@ -434,6 +435,28 @@ static BOOL CALLBACK page_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
   return FALSE;
 }
 
+#ifndef PSCB_PRECREATE
+#define PSCB_PRECREATE 2
+#endif
+#ifndef DS_CONTEXTHELP
+#define DS_CONTEXTHELP 0x2000L
+#endif
+
+// The sheet's "?" button does nothing here (every option has its explanation on the page), and PSH_NOCONTEXTHELP
+// needs comctl32 5.80: drop the style from the template and the window instead.
+static int CALLBACK opt_sheet_cb(HWND w, UINT msg, LPARAM lp)
+{
+  if (msg == PSCB_PRECREATE && lp) ((DLGTEMPLATE*)lp)->style &= ~DS_CONTEXTHELP;
+  if (msg == PSCB_INITIALIZED && w) {
+    LONG ex = GetWindowLongA(w, GWL_EXSTYLE);
+    if (ex & WS_EX_CONTEXTHELP) {
+      SetWindowLongA(w, GWL_EXSTYLE, ex & ~WS_EX_CONTEXTHELP);
+      SetWindowPos(w, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+  }
+  return 0;
+}
+
 static int opt_sheet(int page, int modeless, HWND* out)
 {
   static const int ids[OPT_PAGES] = { IDD_OPT_GENERAL, IDD_OPT_EDITOR, IDD_OPT_FILES, IDD_OPT_COLORS, IDD_OPT_HEX };
@@ -456,7 +479,8 @@ static int opt_sheet(int page, int modeless, HWND* out)
   }
   memset(&ph, 0, sizeof(ph));
   ph.dwSize = sizeof(PROPSHEETHEADERA);
-  ph.dwFlags = PSH_PROPSHEETPAGE | (modeless ? PSH_MODELESS : 0);
+  ph.dwFlags = PSH_PROPSHEETPAGE | PSH_USECALLBACK | (modeless ? PSH_MODELESS : 0);
+  ph.pfnCallback = opt_sheet_cb;
   ph.hwndParent = g_app.frame;
   ph.hInstance = g_app.hinst;
   ph.pszCaption = "Options";

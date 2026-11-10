@@ -694,7 +694,8 @@ static int add_words(KwTable* t, const char* v, u8 cls)
     int n = next_token(&p, w, sizeof(w));
     if (n < 0) return E_RANGE;
     if (n == 0) return E_OK;
-    if (t->add(w, (u32)n, cls) != E_OK) return E_NOMEM;
+    n = t->add(w, (u32)n, cls);              // T16: E_RANGE (a keyword of KW_MAX_LEN + 1 chars) used to come back as
+    if (n != E_OK) return n;                 // E_NOMEM, so a .lng file with it failed with "out of memory"
   }
 }
 

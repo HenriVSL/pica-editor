@@ -712,6 +712,50 @@ changes).
 
 ---
 
+---
+
+## T19 Installer: setup.exe, upgrade, uninstall, file associations, "Open with Pica" (Wave 4, added 2026-11-10)
+
+Requested by the user after a test on the ThinkPad T40: an installer that can install a newer version over an old
+one, map file types to Pica, and add "Open with Pica" to the Explorer right-click menu. Overseer decision: **our own
+installer written in VC6** (no MSI: Win98 needs the separate Windows Installer runtime, and the VS6 "Visual Studio
+Installer" add-on is a separate download; NSIS/Inno versions that still target Win9x are old third-party tools). This
+keeps the project "all our own code" and makes upgrade behaviour exactly ours.
+
+**Owns:** new folder `setup/` (`setup.cpp`, `uninst` code if separate, `setup.rc`, `setup_ids.h`, `Makefile`,
+`setup.ico` or reuse of `res/pica.ico` by path), `tools/` new scripts it needs, `docs/INSTALLER.md`.
+Reads (never edits) `res/appinfo.h` for name/version.
+
+**Deliverables**
+1. `setup.exe` (one file, VC6, Win32, /W3 zero warnings) that embeds the release payload as RCDATA (pica.exe,
+   README.TXT, LICENSE if any). Built by `w98 build editor\setup` after `pica.exe` exists.
+2. Wizard (standard Win98 look, property sheet or simple dialog sequence): welcome, folder (default
+   `C:\Program Files\Pica`), options: Start menu shortcut, desktop shortcut, "Open with Pica" in the right-click menu
+   for all files, file associations (checklist of extensions grouped: text/log/ini/inf/reg..., source code c/cpp/h/
+   rc/asm/py/js/html/xml/css/md/bat/mak; nothing checked that Windows itself owns critically, e.g. .exe/.lnk/.bat
+   `open` verb must stay "run": for .bat/.reg associate the **Edit** verb only), then progress and finish
+   ("Start Pica").
+3. Registry: `HKLM\Software\Pica` (InstallDir, Version, options chosen); ProgID `Pica.Document` with
+   DefaultIcon and `shell\open\command = "<dir>\pica.exe" "%1"`; `HKCR\*\shell\Pica` ("Open with &Pica");
+   associations save the previous ProgID / edit command under `HKLM\Software\Pica\Previous` and restore them on
+   uninstall only if still pointing at Pica; `SHChangeNotify(SHCNE_ASSOCCHANGED)`; Add/Remove Programs entry under
+   `...\CurrentVersion\Uninstall\Pica` (DisplayName, DisplayVersion, UninstallString, DisplayIcon).
+4. **Upgrade in place**: detect an existing install (registry + exe version resource); show "Upgrade 1.0 -> 1.x";
+   if Pica is running, ask the user to close it (offer Retry; never kill it: its session/backups must be written);
+   replace program files only; **never touch** `pica.ini`, `session1/2.ini`, backups, `langs\` overrides or anything
+   the user created. Locked files: Win98 has no MoveFileEx delay, use `WININIT.INI [rename]` and ask to restart.
+   Downgrade asks first. Reinstall of the same version = repair.
+5. Uninstall (`uninst.exe` copied to the install dir or `setup.exe /uninstall`): removes program files, shortcuts,
+   registry entries, restores previous associations; asks whether to also delete settings, session and backups
+   (default: keep). Self-deletion via WININIT.INI or a temp copy.
+6. Silent/test switches: `/S` (silent with defaults), `/D=<dir>`, `/uninstall /S`, and a log file. Tests on VM A:
+   fresh install, upgrade from a copy built with a lower version number, Pica running during upgrade, association
+   and context menu actually work (launch via `start file.txt` / ShellExecute and via the menu verb), uninstall
+   leaves no registry keys or files except kept settings, previous associations restored. Screenshots of the wizard
+   pages to `docs/shots/t19_*.png`.
+7. `docs/INSTALLER.md`: what it does, registry keys, switches, how to build. Note for T18: release ships both the
+   zip (portable) and `setup.exe`.
+
 ## Notes for the overseer
 - After Wave 0, check that the headers match DESIGN 6 and that per-suite builds work on both compilers before starting
   Wave 1.

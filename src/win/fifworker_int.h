@@ -39,6 +39,7 @@ void finddlg_fif_state(int running);                     // Stop button in the d
 void search_select(Tab* t, epos anchor, epos caret, int scroll_mode);  // selection in the tab's view
 void search_ecp_to_utf8(const ecp* s, u32 n, char* out, u32 cap);      // bad markers -> U+FFFD, truncates
 void search_header(const ecp* pat, u32 n, char* out, u32 cap);         // "Search \"pat\"" (pattern cut at 100 chars)
+int  finddlg_bench(Tab* t, const char* pat, const char* rep, int mode, int match_case, int op);   // bench: 0 next, 1 all
 
 // ---- isearch.cpp ----
 int  isearch_focused();                                  // the bar's edit has the focus

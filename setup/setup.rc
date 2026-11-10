@@ -1,0 +1,85 @@
+// setup.rc - resources of setup.exe (T19): wizard pages, payload (RCDATA), icon, version. CRLF, ASCII.
+// rc runs in setup\ (rc /r /i..\res /foobj\setup.res setup.rc); the Makefile copies the payload into obj\ first.
+#include <windows.h>
+#include <commctrl.h>
+#include "appinfo.h"
+#include "setup_ids.h"
+
+#define SETUP_DESC APP_NAME " setup"
+#define SETUP_FILE "setup.exe"
+#include "setupver.rc2"
+
+IDR_PAY_PICA    RCDATA "obj\\pica.bin"
+IDR_PAY_UNINST  RCDATA "obj\\uninst.exe"
+#ifdef HAVE_README
+IDR_PAY_README  RCDATA "obj\\readme.bin"
+#endif
+#ifdef HAVE_LICENSE
+IDR_PAY_LICENSE RCDATA "obj\\license.bin"
+#endif
+
+IDD_WELCOME DIALOG 0, 0, 317, 160
+STYLE WS_CHILD | WS_DISABLED | WS_CAPTION
+CAPTION "Setup"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDI_SETUP, -1, 7, 7, 20, 20
+    LTEXT           "", IDC_TITLE, 40, 9, 270, 12
+    LTEXT           "Pica is a text and hex editor for Windows 98: tabs, syntax colouring, ANSI / UTF-8 / UTF-16, find and replace with regular expressions, find in files, session restore and a hex view of the same file.",
+                    -1, 40, 28, 270, 34
+    LTEXT           "", IDC_W_STATUS, 40, 68, 270, 42
+    LTEXT           "Click Next to continue, or Cancel to quit Setup.", -1, 40, 140, 270, 10
+END
+
+IDD_FOLDER DIALOG 0, 0, 317, 160
+STYLE WS_CHILD | WS_DISABLED | WS_CAPTION
+CAPTION "Setup"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDI_SETUP, -1, 7, 7, 20, 20
+    LTEXT           "Folder and options", IDC_TITLE, 40, 9, 270, 12
+    LTEXT           "Install Pica in this folder:", -1, 40, 28, 270, 8
+    EDITTEXT        IDC_F_DIR, 40, 40, 208, 13, ES_AUTOHSCROLL
+    PUSHBUTTON      "B&rowse...", IDC_F_BROWSE, 254, 39, 56, 14
+    LTEXT           "", IDC_F_NOTE, 40, 58, 270, 26
+    GROUPBOX        "Options", -1, 40, 88, 270, 54
+    AUTOCHECKBOX    "Create a &Start menu shortcut", IDC_F_START, 48, 100, 250, 10, WS_TABSTOP
+    AUTOCHECKBOX    "Create a &desktop shortcut", IDC_F_DESK, 48, 113, 250, 10, WS_TABSTOP
+    AUTOCHECKBOX    "Add ""Open with &Pica"" to the right-click menu of all files", IDC_F_CTX, 48, 126, 250, 10, WS_TABSTOP
+END
+
+IDD_TYPES DIALOG 0, 0, 317, 160
+STYLE WS_CHILD | WS_DISABLED | WS_CAPTION
+CAPTION "Setup"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "File types", IDC_TITLE, 7, 4, 300, 12
+    LTEXT           "Ticked types open in Pica when you double-click them. Unticked types keep their program.",
+                    -1, 7, 17, 303, 10
+    PUSHBUTTON      "&Defaults", IDC_T_DEFAULTS, 7, 141, 56, 14
+    PUSHBUTTON      "&Clear all", IDC_T_NONE, 68, 141, 56, 14
+END
+
+IDD_PROGRESS DIALOG 0, 0, 317, 160
+STYLE WS_CHILD | WS_DISABLED | WS_CAPTION
+CAPTION "Setup"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDI_SETUP, -1, 7, 7, 20, 20
+    LTEXT           "Installing Pica", IDC_TITLE, 40, 9, 270, 12
+    LTEXT           "Please wait...", IDC_P_TEXT, 40, 40, 270, 10
+    CONTROL         "", IDC_P_BAR, "msctls_progress32", WS_BORDER, 40, 54, 270, 12
+END
+
+IDD_FINISH DIALOG 0, 0, 317, 160
+STYLE WS_CHILD | WS_DISABLED | WS_CAPTION
+CAPTION "Setup"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDI_SETUP, -1, 7, 7, 20, 20
+    LTEXT           "", IDC_TITLE, 40, 9, 270, 12
+    LTEXT           "", IDC_D_TEXT, 40, 28, 270, 80
+    AUTOCHECKBOX    "&Start Pica now", IDC_D_RUN, 40, 120, 250, 10, WS_TABSTOP
+    AUTOCHECKBOX    "&Restart Windows now", IDC_D_REBOOT, 40, 120, 250, 10, WS_TABSTOP
+    LTEXT           "Click Finish to close Setup.", -1, 40, 140, 270, 10
+END

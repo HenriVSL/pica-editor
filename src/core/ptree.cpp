@@ -11,6 +11,7 @@
 // pieces move. Operations that would break this (odd positions or lengths, which only undo/redo across a
 // "reload as" can produce) take a slow path: apply, then rebuild the whole piece list with realignment and recount.
 #include "ptree.h"
+#include "ptree_int.h"
 #include <string.h>
 
 enum { NIL = 0 };
@@ -122,12 +123,12 @@ u32 AddBuffer::chunk_fill(u16 src) const
 // PieceTree: pool, treap primitives
 
 PieceTree::PieceTree()
-  : root_(NIL), free_head_(NIL), free_n_(0), rng_(0x9E3779B9u), npieces_(0), stamp_(0), orig_(0)
+  : root_(NIL), free_head_(NIL), free_n_(0), rng_(0x9E3779B9u), npieces_(0), stamp_(0), orig_(0), lc_(0)
 {
   bs_.unit = 1; bs_.b0 = 0x0A; bs_.b1 = 0; bs_.pad = 0;
 }
 
-PieceTree::~PieceTree() {}
+PieceTree::~PieceTree() { lc_drop_(); }
 
 u32 PieceTree::slen_(u32 t) const { return t ? pool_[t].slen : 0; }
 u32 PieceTree::snb_(u32 t) const { return t ? pool_[t].snb : 0; }
@@ -352,6 +353,162 @@ int PieceTree::count_refs(PieceRef* refs, u32 n)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Line-start cache (T16)
+//
+// break_pos/breaks_before (and splitting a piece for an edit) used to scan up to a whole 64 KB piece. The bytes a
+// piece refers to never change (the original is immutable, add chunks are append-only), so break counts can be
+// cached per SOURCE range, independent of the tree: for each 64 KB-aligned block of a source (src, start >> 16) an
+// entry holds the break count of each 512-byte sub-block, filled lazily from the block start up to the sub-block a
+// query needs (nvalid). A query over [x, y) then scans at most ~512 bytes at each end and adds whole sub-blocks in
+// between. Edits never invalidate anything; only what changes the meaning of the bytes does: clear/init (chunk ids
+// are reused), set_break_spec, set_original (the cache also re-checks spec and original on every use), swap (the
+// cache travels with the tree).
+//
+// Unit 2 (UTF-16): a piece counts pairs at even offsets from its start, so the parity of the start matters: cnt[0]
+// counts pairs whose first byte is at an even source offset in the sub-block, cnt[1] at an odd one (the last odd
+// pair reads the first byte of the next sub-block). An add-chunk sub-block is only cached once the chunk holds every
+// byte it reads (append-only, so it is final then); the end of the original or of a full chunk is final too.
+//
+// Memory: the table has 4 ways x nsets (power of two, sized to the document length when it is allocated or grown,
+// at most 64 sets = 256 entries x 524 bytes = 131 KB, covering 16 MB); least recently used entries are replaced.
+// Allocation failure only disables the cache (queries scan as before).
+
+enum { LC_SUB = 512, LC_NSUB = 128, LC_WAYS = 4, LC_MAX_SETS = 64, LC_MIN = 2048, LC_FREE = 0xFFFF };
+struct PtLcEntry { u32 blk; u32 tick; u16 src; u16 nvalid; u16 cnt[2][LC_NSUB]; };
+struct PtLineCache { u32 nsets; u32 tick; BreakSpec bs; ByteSource* orig; PtLcEntry e[1]; };
+
+static int g_lc_on = 1;
+void pt_line_cache_enable(int on) { g_lc_on = on ? 1 : 0; }
+
+static u32 lc_alloc_size(u32 nsets) { return (u32)sizeof(PtLineCache) + (nsets * LC_WAYS - 1) * (u32)sizeof(PtLcEntry); }
+
+void PieceTree::lc_drop_()
+{
+  if (lc_) e_free(lc_);
+  lc_ = 0;
+}
+
+u32 PieceTree::line_cache_bytes() const { return lc_ ? lc_alloc_size(lc_->nsets) : 0; }
+
+// Entry for (src, blk), created (empty) if missing; NULL if the cache can't be allocated.
+PtLcEntry* PieceTree::lc_entry_(u16 src, u32 blk)
+{
+  u32 want = 1, blocks = (length() >> 16) + 1, set, i;
+  PtLcEntry* e;
+  PtLcEntry* victim;
+  while (want < LC_MAX_SETS && want * LC_WAYS < blocks) want *= 2;
+  if (lc_ && (lc_->bs.unit != bs_.unit || lc_->bs.b0 != bs_.b0 || lc_->bs.b1 != bs_.b1 || lc_->orig != orig_ ||
+              lc_->nsets < want))
+    lc_drop_();
+  if (!lc_) {
+    lc_ = (PtLineCache*)e_alloc(lc_alloc_size(want));
+    if (!lc_) return 0;
+    lc_->nsets = want; lc_->tick = 0; lc_->bs = bs_; lc_->orig = orig_;
+    for (i = 0; i < want * LC_WAYS; i++) { lc_->e[i].src = LC_FREE; lc_->e[i].tick = 0; }
+  }
+  set = (blk + (u32)src * 37u) & (lc_->nsets - 1);   // consecutive blocks of a source spread over all sets
+  e = &lc_->e[set * LC_WAYS];
+  victim = e;
+  lc_->tick++;
+  for (i = 0; i < LC_WAYS; i++) {
+    if (e[i].src == src && e[i].blk == blk) { e[i].tick = lc_->tick; return &e[i]; }
+    if (e[i].src == LC_FREE) { if (victim->src != LC_FREE) victim = &e[i]; }
+    else if (victim->src != LC_FREE && e[i].tick < victim->tick) victim = &e[i];
+  }
+  victim->src = src; victim->blk = blk; victim->nvalid = 0; victim->tick = lc_->tick;
+  return victim;
+}
+
+// Make sub-blocks [0, need) of the entry valid; E_RANGE if the source doesn't hold them (yet), E_IO on read errors.
+int PieceTree::lc_extend_(PtLcEntry* e, u32 need)
+{
+  u32 base = e->blk << 16, lim, fin;
+  int rc;
+  if (e->src == 0) { lim = orig_ ? orig_->size() : 0; fin = 1; }
+  else { lim = add_.chunk_fill(e->src); fin = lim == (u32)PT_ADD_CHUNK; }
+  while ((u32)e->nvalid < need) {
+    u32 a = base + (u32)e->nvalid * LC_SUB, c0 = 0, c1 = 0;
+    if (a > lim || lim - a < LC_SUB) return E_RANGE;
+    if (bs_.unit == 2 && !fin && lim - a < LC_SUB + 1) return E_RANGE;   // the last odd pair needs one more byte
+    rc = count_(e->src, a, LC_SUB, &c0);
+    if (rc == E_OK && bs_.unit == 2) rc = count_(e->src, a + 1, lim - a > LC_SUB ? LC_SUB : LC_SUB - 2, &c1);
+    if (rc != E_OK) return rc;
+    e->cnt[0][e->nvalid] = (u16)c0;
+    e->cnt[1][e->nvalid] = (u16)c1;
+    e->nvalid++;
+  }
+  return E_OK;
+}
+
+// Same result as count_: break units in [start, start + len) of a source.
+int PieceTree::lc_count_(u16 src, u32 start, u32 len, u32* out)
+{
+  u32 sh, x, y, A, B, a, total = 0, c = 0;
+  int rc;
+  if (bs_.unit == 2) len &= ~1u;
+  if (len < LC_MIN || !g_lc_on) return count_(src, start, len, out);
+  x = start; y = start + len;
+  sh = (bs_.unit == 2 && (x & 1)) ? 1u : 0u;
+  A = (x + LC_SUB - 1) & ~(u32)(LC_SUB - 1);
+  B = y & ~(u32)(LC_SUB - 1);                // len >= LC_MIN, so x <= A < B <= y
+  for (a = A; a < B; ) {
+    PtLcEntry* e = lc_entry_(src, a >> 16);
+    u32 j = (a & 0xFFFF) / LC_SUB, jend = (B >> 16) == (a >> 16) ? (B & 0xFFFF) / LC_SUB : LC_NSUB;
+    if (!e || lc_extend_(e, jend) != E_OK) return count_(src, start, len, out);
+    for (; j < jend; j++) total += (u32)e->cnt[sh][j];
+    a = (a & ~0xFFFFu) + 0x10000u;
+    if (a == 0) break;                       // wrapped past 4 GB (B <= y fits in u32, so a >= B already)
+  }
+  rc = count_(src, x, A + sh - x, &c);
+  if (rc != E_OK) return rc;
+  total += c;
+  rc = count_(src, B + sh, y - B - sh, &c);
+  if (rc != E_OK) return rc;
+  *out = total + c;
+  return E_OK;
+}
+
+// Same result as find_: relative offset of break unit k in [start, start + len) of a source.
+int PieceTree::lc_find_(u16 src, u32 start, u32 len, u32 k, u32* rel)
+{
+  u32 sh, x, y, A, B, a, c = 0, r = 0;
+  int rc;
+  if (bs_.unit == 2) len &= ~1u;
+  if (len < LC_MIN || !g_lc_on) return find_(src, start, len, k, rel);
+  x = start; y = start + len;
+  sh = (bs_.unit == 2 && (x & 1)) ? 1u : 0u;
+  A = (x + LC_SUB - 1) & ~(u32)(LC_SUB - 1);
+  B = y & ~(u32)(LC_SUB - 1);
+  rc = count_(src, x, A + sh - x, &c);
+  if (rc != E_OK) return rc;
+  if (k < c) return find_(src, x, A + sh - x, k, rel);
+  k -= c;
+  for (a = A; a < B; ) {
+    PtLcEntry* e = lc_entry_(src, a >> 16);
+    u32 j = (a & 0xFFFF) / LC_SUB, jend = (B >> 16) == (a >> 16) ? (B & 0xFFFF) / LC_SUB : LC_NSUB;
+    if (!e) return find_(src, start, len, k + c, rel);
+    for (; j < jend; j++) {
+      if (j >= (u32)e->nvalid && lc_extend_(e, j + 1) != E_OK) return find_(src, start, len, k + c, rel);
+      if (k < (u32)e->cnt[sh][j]) {
+        u32 s0 = (a & ~0xFFFFu) + j * LC_SUB + sh;
+        rc = find_(src, s0, LC_SUB, k, &r);
+        if (rc != E_OK) return rc;
+        *rel = s0 + r - x;
+        return E_OK;
+      }
+      k -= (u32)e->cnt[sh][j];
+      c += (u32)e->cnt[sh][j];
+    }
+    a = (a & ~0xFFFFu) + 0x10000u;
+    if (a == 0) break;
+  }
+  rc = find_(src, B + sh, y - B - sh, k, &r);
+  if (rc != E_OK) return rc;
+  *rel = B + sh + r - x;
+  return E_OK;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Lifecycle
 
 void PieceTree::clear()
@@ -361,6 +518,7 @@ void PieceTree::clear()
   rng_ = 0x9E3779B9u;
   add_.clear();
   orig_ = 0;
+  lc_drop_();
   stamp_++;
 }
 
@@ -466,6 +624,7 @@ int PieceTree::set_break_spec(const BreakSpec& bs, ProgressCb* cb)
   int rc;
   bs_ = bs;
   stamp_++;
+  lc_drop_();                                // counts depend on the spec (the cache also checks it on every use)
   if (!root_) return E_OK;
   if (bs.unit == old.unit) {
     rc = recount_(root_, cb, &done);
@@ -548,7 +707,7 @@ epos PieceTree::length() const { return slen_(root_); }
 u32 PieceTree::break_count() const { return snb_(root_); }
 const BreakSpec& PieceTree::break_spec() const { return bs_; }
 ByteSource* PieceTree::original() const { return orig_; }
-void PieceTree::set_original(ByteSource* s) { orig_ = s; stamp_++; }
+void PieceTree::set_original(ByteSource* s) { orig_ = s; stamp_++; lc_drop_(); }
 AddBuffer* PieceTree::add_buffer() { return &add_; }
 u32 PieceTree::piece_count() const { return npieces_; }
 u32 PieceTree::stamp() const { return stamp_; }
@@ -604,7 +763,7 @@ epos PieceTree::break_pos(u32 b)
     base += slen_(n.l);
     if (b < n.nb) {
       u32 rel = 0;
-      if (find_(n.src, n.start, n.len, b, &rel) != E_OK) return EPOS_NONE;
+      if (lc_find_(n.src, n.start, n.len, b, &rel) != E_OK) return EPOS_NONE;
       return base + rel;
     }
     b -= n.nb;
@@ -630,10 +789,10 @@ u32 PieceTree::breaks_before(epos pos)
       u32 start = n.start, len = n.len, nb = n.nb;
       if (bs_.unit == 2) rel &= ~1u;
       if (rel <= len / 2) {
-        if (count_(src, start, rel, &c) != E_OK) return acc;
+        if (lc_count_(src, start, rel, &c) != E_OK) return acc;
         return acc + c;
       }
-      if (count_(src, start + rel, len - rel, &c) != E_OK) return acc;
+      if (lc_count_(src, start + rel, len - rel, &c) != E_OK) return acc;
       return acc + nb - c;
     }
     acc += n.nb;
@@ -705,10 +864,10 @@ int PieceTree::ensure_boundary_(epos pos)
     Node& n = pool_[t];
     u32 kk = k;
     if (bs_.unit == 2) kk &= ~1u;
-    if (kk <= n.len / 2) rc = count_(n.src, n.start, kk, &c);
+    if (kk <= n.len / 2) rc = lc_count_(n.src, n.start, kk, &c);
     else {
       u32 s = 0;
-      rc = count_(n.src, n.start + kk, n.len - kk, &s);
+      rc = lc_count_(n.src, n.start + kk, n.len - kk, &s);
       c = n.nb - s;
     }
     if (rc != E_OK) return rc;
@@ -879,6 +1038,7 @@ void PieceTree::swap(PieceTree& o)
   s = orig_; orig_ = o.orig_; o.orig_ = s;
   b = bs_; bs_ = o.bs_; o.bs_ = b;
   add_.swap(o.add_);
+  { PtLineCache* c = lc_; lc_ = o.lc_; o.lc_ = c; }
   stamp_++; o.stamp_++;
 }
 

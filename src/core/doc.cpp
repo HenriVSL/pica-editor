@@ -9,6 +9,7 @@
 // CRLF pair if the unit before it is CR, else a bare LF; a CR unit not followed by LF is a lone CR. (Same rules as
 // detect_eol, so file_index results can be passed to finish_indexing.) In CR mode, breaks = cr + crlf.
 #include "doc.h"
+#include "doc_int.h"
 #include <string.h>
 
 #define UNIT_NONE 0xFFFFFFFFu
@@ -77,6 +78,8 @@ static EncSpec unpack_enc(u32 v)
 static u32 pack_eol(EolStyle s, bool crm) { return (u32)s | (crm ? 0x100u : 0u); }
 static bool is_u16(const EncSpec& e) { return e.kind == EK_UTF16LE || e.kind == EK_UTF16BE; }
 static epos add_clamp(epos x, epos d, epos lim) { return (lim - x >= d) ? x + d : lim; }
+static int eol_count1_(ByteSource* s, epos a, epos b, u8 known_b0, u32 known_n, EolCounts* c, ProgressCb* cb);
+static int eol_count2_(ByteSource* s, epos a, epos b, int be, u8 known_b0, u32 known_n, EolCounts* c, ProgressCb* cb);
 static bool spec_eq(const BreakSpec& a, const BreakSpec& b) { return a.unit == b.unit && a.b0 == b.b0 && a.b1 == b.b1; }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -163,7 +166,10 @@ int Document::reset_(ByteSource* src, const EncSpec& enc_in, epos bom_len, EolSt
   codec_break_spec(enc, crm ? 1 : 0, &bs);
   ec.crlf = ec.lf = ec.cr = 0;
   rc = indexing ? tmp.init_uncounted(src, bs) : tmp.init(src, bs, cb);
-  if (rc == E_OK && !indexing) rc = count_eol_(src, 0, src->size(), is_u16(enc) ? 2 : 1, enc.kind == EK_UTF16BE, &ec, 0);
+  if (rc == E_OK && !indexing) {
+    if (is_u16(enc)) rc = eol_count2_(src, 0, src->size(), enc.kind == EK_UTF16BE, (u8)(bs.b0 | bs.b1), tmp.break_count(), &ec, 0);
+    else rc = eol_count1_(src, 0, src->size(), bs.b0, tmp.break_count(), &ec, 0);   // one pass: the tree counted b0
+  }
   if (rc != E_OK) {
     if (src != src_) delete src;
     return rc;
@@ -237,6 +243,18 @@ int Document::reset_source(ByteSource* src, const EncSpec& enc, epos bom_len, Eo
     return busy_ ? E_BUSY : E_STATE;
   }
   return reset_(src, enc, bom_len, eol, cb, 0, 1);
+}
+
+int Document::reset_source_indexing(ByteSource* src, const EncSpec& enc, epos bom_len, EolStyle eol)
+{
+  int rc;
+  if (busy_ || depth_) {
+    if (src && src != src_) delete src;
+    return busy_ ? E_BUSY : E_STATE;
+  }
+  rc = reset_(src, enc, bom_len, eol, 0, 1, 1);
+  if (rc == E_OK) ondemand_ = true;
+  return rc;
 }
 
 int Document::reload_as_edit(ByteSource* src)
@@ -424,7 +442,165 @@ epos Document::snap_char(epos pos)
 // ---------------------------------------------------------------------------------------------------------------
 // EOL counting
 
+// Unit-1 EOL counts over [a, b) with memchr (T16: the per-byte state machine below cost ~30 cycles/byte on the PII;
+// opening 10 MB spent 1 s here). Same classification as the general loop: an LF whose previous byte is CR is a CRLF
+// (the CR may be at a - 1), other LFs are bare; a CR is lone unless the next byte (which may be at b) is LF.
+// P = LFs in [a, b) preceded by CR, Q = CRs in [a, b) followed by LF; Q = P - x + y with x = "LF at a preceded by
+// CR", y = "LF at b preceded by CR". known_b0 (0x0A or 0x0D, 0 = none) with known_n = the number of those bytes in
+// [a, b) (the piece tree's break count after init) saves the pass over that byte.
+static int eol_scan1_(ByteSource* s, epos a, epos b, u8 target, u32* n, u32* paired, ProgressCb* cb, epos total)
+{
+  epos o = a, len = s->size();
+  u32 cnt = 0, pr = 0;
+  int last = -1, pending = 0;
+  u8 nb = 0;
+  if (target == 0x0A && a > 0 && s->read(a - 1, &nb, 1) == E_OK) last = nb;
+  while (o < b) {
+    epos av = 0;
+    const u8* p = s->get(o, &av);
+    const u8* q;
+    const u8* e;
+    if (!p || av == 0) return s->err() != E_OK ? s->err() : E_IO;
+    if (av > b - o) av = b - o;
+    if (pending) { if (p[0] == 0x0A) pr++; pending = 0; }
+    q = p; e = p + av;
+    while (q < e) {
+      const u8* f = (const u8*)memchr(q, target, (size_t)(e - q));
+      if (!f) break;
+      cnt++;
+      if (target == 0x0A) { if ((f > p ? (int)f[-1] : last) == 0x0D) pr++; }
+      else if (f + 1 < e) { if (f[1] == 0x0A) pr++; }
+      else pending = 1;
+      q = f + 1;
+    }
+    last = p[av - 1];
+    o += av;
+    if (cb && cb->progress(o - a, total)) return E_CANCEL;
+  }
+  if (pending && b < len && s->read(b, &nb, 1) == E_OK && nb == 0x0A) pr++;
+  *n = cnt; *paired = pr;
+  return E_OK;
+}
+
+static int eol_count1_(ByteSource* s, epos a, epos b, u8 known_b0, u32 known_n, EolCounts* c, ProgressCb* cb)
+{
+  epos len = s->size();
+  u32 L = 0, C = 0, P = 0, Q = 0, x = 0, y = 0, dummy = 0;
+  u8 two[2];
+  int rc;
+  c->crlf = c->lf = c->cr = 0;
+  if (b > len) b = len;
+  if (a >= b) return E_OK;
+  if (a > 0 && s->read(a - 1, two, 2) == E_OK && two[0] == 0x0D && two[1] == 0x0A) x = 1;
+  if (b < len && s->read(b - 1, two, 2) == E_OK && two[0] == 0x0D && two[1] == 0x0A) y = 1;
+  if (known_b0 == 0x0A) {
+    L = known_n;
+    rc = eol_scan1_(s, a, b, 0x0D, &C, &Q, cb, b - a);
+    if (rc != E_OK) return rc;
+    P = Q + x - y;
+  } else {
+    rc = eol_scan1_(s, a, b, 0x0A, &L, &P, cb, b - a);
+    if (rc != E_OK) return rc;
+    Q = P + y - x;
+    if (known_b0 == 0x0D) C = known_n;
+    else {
+      rc = eol_scan1_(s, a, b, 0x0D, &C, &dummy, 0, 0);
+      if (rc != E_OK) return rc;
+    }
+  }
+  c->crlf = P; c->lf = L - P; c->cr = C - Q;
+  return E_OK;
+}
+
+// Unit 2 (UTF-16), same algebra with code units at offsets a, a + 2, ... (a even): memchr for the unit's low byte
+// over 4 KB windows read with 2 bytes of context on each side, then parity, high byte and neighbour checks.
+enum { EOL2_CH = 4096 };
+
+static u32 unit2_(const u8* p, int be) { return be ? ((u32)p[0] << 8 | p[1]) : ((u32)p[1] << 8 | p[0]); }
+
+static int eol_scan2_(ByteSource* s, epos a, epos b, int be, u8 target, u32* n, u32* paired, ProgressCb* cb)
+{
+  u8 buf[EOL2_CH + 4];
+  epos len = s->size(), o, lim2 = b + 2 < len ? b + 2 : len;   // units may be read up to min(b + 2, len)
+  u32 cnt = 0, pr = 0;
+  int rc;
+  for (o = a; o < b; o += EOL2_CH) {
+    epos lo = o >= 2 ? o - 2 : o, hi = (len - o > EOL2_CH + 2) ? o + EOL2_CH + 2 : len, end = o + EOL2_CH < b ? o + EOL2_CH : b;
+    const u8* q;
+    const u8* e;
+    rc = s->read(lo, buf, hi - lo);
+    if (rc != E_OK) return rc;
+    q = buf + (o - lo) + (be ? 1 : 0);       // low byte of the first unit
+    e = buf + (end - lo) + (be ? 1 : 0);
+    if (e > buf + (hi - lo)) e = buf + (hi - lo);
+    while (q < e) {
+      const u8* f = (const u8*)memchr(q, target, (size_t)(e - q));
+      epos u;
+      if (!f) break;
+      q = f + 1;
+      u = lo + (epos)(f - buf) - (be ? 1 : 0);
+      if (((u - a) & 1) || u >= end || u + 2 > lim2) continue;
+      if (unit2_(buf + (u - lo), be) != target) continue;
+      cnt++;
+      if (target == 0x0A) { if (u >= 2 && unit2_(buf + (u - 2 - lo), be) == 0x0D) pr++; }
+      else if (u + 4 <= lim2 && unit2_(buf + (u + 2 - lo), be) == 0x0A) pr++;
+    }
+    if (cb && cb->progress(end - a, b - a)) return E_CANCEL;
+  }
+  *n = cnt; *paired = pr;
+  return E_OK;
+}
+
+static int eol_count2_(ByteSource* s, epos a, epos b, int be, u8 known_b0, u32 known_n, EolCounts* c, ProgressCb* cb)
+{
+  epos len = s->size();
+  u32 L = 0, C = 0, P = 0, Q = 0, x = 0, y = 0, dummy = 0;
+  u8 four[4];
+  int rc;
+  c->crlf = c->lf = c->cr = 0;
+  if (b > len) b = len;
+  if (a >= b) return E_OK;
+  if (a >= 2 && a + 2 <= len && s->read(a - 2, four, 4) == E_OK && unit2_(four, be) == 0x0D && unit2_(four + 2, be) == 0x0A) x = 1;
+  if (!((b - a) & 1) && b + 2 <= len && s->read(b - 2, four, 4) == E_OK && unit2_(four, be) == 0x0D &&
+      unit2_(four + 2, be) == 0x0A) y = 1;
+  if (known_b0 == 0x0A) {
+    L = known_n;
+    rc = eol_scan2_(s, a, b, be, 0x0D, &C, &Q, cb);
+    if (rc != E_OK) return rc;
+    P = Q + x - y;
+  } else {
+    rc = eol_scan2_(s, a, b, be, 0x0A, &L, &P, cb);
+    if (rc != E_OK) return rc;
+    Q = P + y - x;
+    if (known_b0 == 0x0D) C = known_n;
+    else {
+      rc = eol_scan2_(s, a, b, be, 0x0D, &C, &dummy, 0);
+      if (rc != E_OK) return rc;
+    }
+  }
+  c->crlf = P; c->lf = L - P; c->cr = C - Q;
+  return E_OK;
+}
+
+static int count_eol_loop_(ByteSource* s, epos a, epos b, u32 unit, int be, EolCounts* c, ProgressCb* cb);
+
 int Document::count_eol_(ByteSource* s, epos a, epos b, u32 unit, int be, EolCounts* c, ProgressCb* cb)
+{
+  if (unit == 1) return eol_count1_(s, a, b, 0, 0, c, cb);
+  if (!(a & 1)) return eol_count2_(s, a, b, be, 0, 0, c, cb);
+  return count_eol_loop_(s, a, b, unit, be, c, cb);
+}
+
+int doc_count_eol_test(ByteSource* s, epos a, epos b, u32 unit, int be, int mode, u8 known_b0, u32 known_n, EolCounts* c)
+{
+  if (mode == 1) return count_eol_loop_(s, a, b, unit, be, c, 0);
+  if (unit == 1) return eol_count1_(s, a, b, known_b0, known_n, c, 0);
+  if (!(a & 1)) return eol_count2_(s, a, b, be, known_b0, known_n, c, 0);
+  return count_eol_loop_(s, a, b, unit, be, c, 0);
+}
+
+// The reference loop (per code unit): odd UTF-16 windows and tests.
+static int count_eol_loop_(ByteSource* s, epos a, epos b, u32 unit, int be, EolCounts* c, ProgressCb* cb)
 {
   u8 buf[4096];
   epos len = s->size(), rs, re, o;
@@ -466,7 +642,14 @@ int Document::count_eol_(ByteSource* s, epos a, epos b, u32 unit, int be, EolCou
 void Document::recount_eol_()
 {
   EolCounts c;
-  if (count_eol_(&view_, 0, length(), unit_(), enc_.kind == EK_UTF16BE, &c, 0) == E_OK) eolc_ = c;
+  int rc;
+  const BreakSpec& bs = tree_.break_spec();
+  if (unit_() == 1 && bs.unit == 1 && !indexing_)
+    rc = eol_count1_(&view_, 0, length(), bs.b0, tree_.break_count(), &c, 0);
+  else if (unit_() == 2 && bs.unit == 2 && !indexing_)
+    rc = eol_count2_(&view_, 0, length(), enc_.kind == EK_UTF16BE, (u8)(bs.b0 | bs.b1), tree_.break_count(), &c, 0);
+  else rc = count_eol_(&view_, 0, length(), unit_(), enc_.kind == EK_UTF16BE, &c, 0);
+  if (rc == E_OK) eolc_ = c;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -1,0 +1,31 @@
+// setupver.rc2 - icon and version resource shared by setup.rc and uninst.rc (T19). CRLF, ASCII.
+// SETUP_DESC and SETUP_FILE are defined by the including script.
+
+IDI_SETUP ICON "..\\res\\pica.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION APP_VERSION_RC
+ PRODUCTVERSION APP_VERSION_RC
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS__WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", SETUP_DESC
+            VALUE "FileVersion", APP_VERSION
+            VALUE "InternalName", SETUP_FILE
+            VALUE "OriginalFilename", SETUP_FILE
+            VALUE "ProductName", APP_NAME
+            VALUE "ProductVersion", APP_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

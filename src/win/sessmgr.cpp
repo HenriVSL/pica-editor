@@ -499,9 +499,11 @@ static void sm_check_tabs(int force)
     if (t->ondemand && t->doc->modified() && !s->note_ondemand && sm_backups_on()) {
       char name[280];
       s->note_ondemand = 1;
-      t->backup_note_shown = 1;
-      sm_name(t, name, sizeof(name));
-      app_status_note("%s is too large for backups: save it to keep your changes", name);
+      if (!t->backup_note_shown) {                 // largefile.cpp may have shown its note already (once per tab)
+        t->backup_note_shown = 1;
+        sm_name(t, name, sizeof(name));
+        app_status_note("%s is too large for backups: save it to keep your changes", name);
+      }
     }
     if (!sm_needs_backup(t, s) || s->job) continue;
     if (!force) {

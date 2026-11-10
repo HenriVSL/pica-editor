@@ -77,6 +77,10 @@ public:
   int  add_listener(DocListener* l);  void remove_listener(DocListener* l);
   PieceTree* tree();
   u32  change_seq() const;                 // increments on every content change
+  // T16 addition: reload into on-demand mode in one call = reset_source (clears undo, EV_RESET with removed = old
+  // length, inserted = new length, lines_added = 0) + init_source_indexing (pieces without counts; edits refused
+  // until finish_indexing fires EV_INDEXED). src owned, also on failure. E_BUSY while busy, E_STATE inside a group.
+  int  reset_source_indexing(ByteSource* src, const EncSpec& enc, epos bom_len, EolStyle eol);
 private:                                   // private state: T01 may change freely
   class View : public ByteSource {         // bytes(): live view with a one-span cache
   public:

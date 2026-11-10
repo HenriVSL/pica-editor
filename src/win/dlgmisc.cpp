@@ -6,6 +6,7 @@
 #include <commctrl.h>
 #include <prsht.h>
 #include "app.h"
+#include "render_int.h"
 #include "tab.h"
 #include "cmds.h"
 #include "ui.h"
@@ -300,7 +301,7 @@ static BOOL CALLBACK info_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
       SetDlgItemTextA(h, IDC_ABOUT_NAME, buf);
       if (f && GetObjectA(f, sizeof(lf), &lf)) {
         lf.lfWeight = FW_BOLD;
-        s->bold = CreateFontIndirectA(&lf);
+        s->bold = (HFONT)gdi_track(CreateFontIndirectA(&lf));
         if (s->bold) SendDlgItemMessageA(h, IDC_ABOUT_NAME, WM_SETFONT, (WPARAM)s->bold, 0);
       }
       SetDlgItemTextA(h, IDC_ABOUT_TEXT,
@@ -319,7 +320,7 @@ static BOOL CALLBACK info_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     break;
   case WM_DESTROY:
     if (s) {
-      if (s->bold) DeleteObject(s->bold);
+      gdi_delete(s->bold);
       s->bold = 0;
       if (s->modeless) { SetWindowLong(h, DWL_USER, 0); delete s; }
     }

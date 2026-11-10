@@ -55,6 +55,28 @@ static DcCache* dc_state(HDC dc)
   return &g_dcs[best];
 }
 
+static int g_gdi_live;
+
+HGDIOBJ gdi_track(HGDIOBJ o)
+{
+  if (o) g_gdi_live++;
+  return o;
+}
+
+BOOL gdi_delete(HGDIOBJ o)
+{
+  BOOL ok;
+  if (!o) return FALSE;
+  ok = DeleteObject(o);
+  if (ok) g_gdi_live--;
+  return ok;
+}
+
+int gdi_live()
+{
+  return g_gdi_live;
+}
+
 static HFONT mk_font(const char* face, int h, int weight, int charset)
 {
   LOGFONTA lf;
@@ -67,7 +89,7 @@ static HFONT mk_font(const char* face, int h, int weight, int charset)
   lf.lfQuality = DEFAULT_QUALITY;
   lf.lfPitchAndFamily = FIXED_PITCH | FF_MODERN;
   es_copy(lf.lfFaceName, sizeof(lf.lfFaceName), face);
-  return CreateFontIndirectA(&lf);
+  return (HFONT)gdi_track(CreateFontIndirectA(&lf));
 }
 
 struct CjkFind { char face[LF_FACESIZE]; int charset; int fixed; };
@@ -118,10 +140,16 @@ static int charset_cp(int cs)
 
 static void free_fonts()
 {
-  if (g_fonts.normal) DeleteObject(g_fonts.normal);
-  if (g_fonts.bold) DeleteObject(g_fonts.bold);
-  if (g_fonts.cjk) DeleteObject(g_fonts.cjk);
-  if (g_fallback) DeleteObject(g_fallback);
+  u32 i;
+  // A font still selected into a view's own DC (CS_OWNDC keeps it) can't be deleted: select a stock font first.
+  for (i = 0; i < 4; i++) {
+    if (g_dcs[i].dc && g_dcs[i].font) SelectObject(g_dcs[i].dc, GetStockObject(SYSTEM_FIXED_FONT));
+    g_dcs[i].font = 0;
+  }
+  gdi_delete(g_fonts.normal);
+  gdi_delete(g_fonts.bold);
+  gdi_delete(g_fonts.cjk);
+  gdi_delete(g_fallback);
   memset(&g_fonts, 0, sizeof(g_fonts));
   g_fallback = 0;
 }

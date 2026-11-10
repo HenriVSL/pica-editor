@@ -23,8 +23,6 @@
 #include "estr.h"
 #include <string.h>
 
-void cmd_line_cut(void);          // Ctrl+L (see cmd_line_del); exported for IDM_LINE_CUT when the overseer adds it
-
 // ---------------------------------------------------------------------------------------------------------------
 // helpers
 
@@ -336,13 +334,9 @@ void cmd_line_cut(void)
   ec_line_delete();
 }
 
-// IDM_LINE_DEL carries both Ctrl+L and Ctrl+Shift+L in the Wave 0 accelerator table: Ctrl held without Shift means
-// Ctrl+L = cut line (Notepad++/VC6); the menu and Ctrl+Shift+L delete without touching the clipboard.
-void cmd_line_del(void)
-{
-  if (GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_SHIFT) >= 0) cmd_line_cut();
-  else ec_line_delete();
-}
+// IDM_LINE_DEL (Ctrl+Shift+L and the menu): delete the touched lines without touching the clipboard. Ctrl+L sends
+// IDM_LINE_CUT (cmd_line_cut).
+void cmd_line_del(void) { ec_line_delete(); }
 
 void cmd_line_up(void) { ec_line_op(2, 0); }
 void cmd_line_down(void) { ec_line_op(2, 1); }

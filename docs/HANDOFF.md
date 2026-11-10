@@ -2013,3 +2013,373 @@ VirtualAlloc for big blocks.
 - The audit can't check F4 / Shift+F4 live (needs find results); their table entries are checked.
 - `~` (dead key on the Finnish layout) is not typed by the AltGr test in real-layout mode.
 - Help is plain Markdown source (coloured), not rendered; links between sections are by heading text.
+
+## T17 Win QA, bug bash and `-bench` performance pass (wave 4, agent 86box-d1-T17, 2026-11-10)
+### Built
+- `src/win/bench.cpp`: `pica.exe -bench -cfg C:\PICATEST` (DESIGN 17.5). Maximizes the window, writes fixtures once
+  into `<cfg>\bench` (bench.c 3000 lines of C; dense.c = the probe's "dense" text, 116 chars and ~14 runs per line;
+  extreme.c ~70 runs per row; replace.txt 1 MB with exactly 10,000 "needle"; SynthSource f1mb / f10mb / f100mb. The
+  100 MB file is kept between runs and skipped when less than 150 MB are free) and writes `<cfg>\bench.txt`: one line
+  per measurement with the 3.2 budget and OK / OVER / info, then a summary. The exit code is the number of OVER lines.
+  Measured: full repaint (C file, dense, extreme, hex; median/worst of 60), Down at the bottom row, wheel, page down,
+  keystroke until idle, open 1/10 MB (3 runs + memory delta), open 100 MB on demand (first screen + hex view at the
+  end, full index, memory), find literal (ignore case / match case) and regex in 10 MB through the real `op_find`,
+  Replace All of 10,000 matches through `op_replace_all` (+ its undo, info), GDI objects after 50 tabs, startup
+  (child process `-multi -nosession`: CreateProcess -> frame visible + WaitForInputIdle) and startup + session
+  restore of 10 files. Diagnostics (info lines): the core split of the 10 MB open (file_load vs
+  Document::init_source) and the raw ReadFile speed of the 100 MB file.
+- GDI accounting (`render_int.h`: `gdi_track`, `gdi_delete`, `gdi_live`): every font / brush / region / bitmap the
+  win modules create (render, hexview, dlgopts, dlgmisc, isearch, frame) is counted. Win98 has no GetGuiResources.
+- `dlgfind.cpp`: `finddlg_bench(t, pat, rep, mode, match_case, op)` (declared in `fifworker_int.h`) for the bench.
+- `selftest.cpp`: scenario 11 "t17 fixes" in st_scenarios: Ctrl+H / Ctrl+Shift+F / Ctrl+F inside the Find dialog
+  switch the page and keep the typed text; 30 tabs (a third in the hex view, some with notification bars) opened and
+  closed leave `gdi_live()` unchanged.
+
+### Bug list (assigned + found in the bug bash; all in win code, all fixed)
+| # | Bug | Fix | Test |
+|---|---|---|---|
+| 1 | "Not backed up" note shown twice for on-demand tabs (sessmgr + largefile) | sessmgr checks `t->backup_note_shown` | review (both paths set the flag) |
+| 2 | `cmd_line_del`: dead "Ctrl without Shift = cut" branch, stale local `cmd_line_cut` prototype | delete only; prototype dropped (cmds.h has it) | sc_lines |
+| 3 | AltGr+S (Polish Programmers s-acute) swallowed by Ctrl+Alt+S Save As | T15's `altgr_char` guard before TranslateAccelerator (only keys that ToAscii turns into a printable char) | sc_altgr |
+| 4 | Ctrl+F / Ctrl+H / Ctrl+Shift+F inside the Find dialog did nothing | IDA_FIND gained the three keys; `finddlg_open` from inside the active dialog only switches the page (like a tab click) and keeps the fields | sc_t17 |
+| 5 | Regex token menu: 26 entries, too tall for 800x600 | five submenus (Characters, Anchors, Repeat, Groups, Look-ahead and flags); the replace menu stays flat (12) | t17_find_tokens.png |
+| 6 | Find dialog moved away from an estimated row (wrong with word wrap / scrolled views) | I1's `textview_pos_rect` in the text view (exact row; no move when the match is beside the dialog); hex view keeps the row estimate | st_search |
+| 7 | **Single instance race** (Explorer starts one `pica.exe "%1"` per file): `GetLastError()` was read after `FindWindowA`, which can reset it, so a process started while the first had the mutex but no window yet could miss ERROR_ALREADY_EXISTS and open a second window; the wait was only 3 s; `SMTO_ABORTIFHUNG` + 8 s let a main instance busy restoring its session look hung, so the file opened in a new window | last error read right after CreateMutex; wait up to 15 s; SMTO_NORMAL 30 s + one retry. Command-line format unchanged | VM A, no instance running: 5 back-to-back `w98 start` and a .bat with 5 `start` lines both gave 5 tabs in one process, in order |
+| 8 | Files handed over by a second instance while a modal window was up (message box, progress, Options) opened tabs underneath that question | `main_on_copydata_open` queues them while the frame is disabled; a 300 ms thread timer re-posts them afterwards | manual review |
+| 9 | Find dialog showed stale status text after closing and reopening ("106 hits in 29 files" from Find in Files on the Find page, or an old red error): the clear ran while the dialog was hidden and only reached the status bar | the status control is always updated; a page change clears another page's result | VNC before/after |
+| 10 | Ctrl+A did nothing in the Find dialog's fields (Win98 edit controls ignore it) | `app_dispatch` selects all in an Edit of the Find dialog | VNC |
+| 11 | Options sheet title bar had a "?" button that did nothing (PSH_NOCONTEXTHELP needs comctl32 5.80) | PSH_USECALLBACK: DS_CONTEXTHELP dropped in PSCB_PRECREATE, WS_EX_CONTEXTHELP in PSCB_INITIALIZED | t17_options.png |
+| 12 | A font still selected into a view's CS_OWNDC could fail to delete on a font change (GDI leak per Options font change) | `free_fonts` selects a stock font into the cached DCs first | GDI count (bench, sc_t17) |
+| 13 | On-demand reload used reset_source(empty) + init_source_indexing (two events; a failure left an empty tab) | T16's `Document::reset_source_indexing` (one EV_RESET; on failure the document is unchanged) | st_docio, st_watch, st_largefile |
+| - | Leftover build folders | `obj\t14\` deleted; tests/tmp `fif1 fif2 i1 stfix t17` deleted (`advbak`, `pfuzz-rx-1.bin` are T16's live files). No artefacts outside `obj\` except the nmake targets pica.exe / coretest.exe | - |
+
+### Bench (VM A, final tree with T16's init_source fix, window maximized at 800x600, 27 text rows, Courier New 10, no VNC viewer)
+| Measurement | Value | Budget | |
+|---|---|---|---|
+| Full repaint, C file coloured | median 5.7 ms, worst 8.6 | <= 12 ms | OK |
+| Full repaint, dense (116 chars, 14 runs/line) | median 12.1 ms, worst 19.0 | <= 15 ms | OK |
+| Full repaint, extreme (~70 runs/row) | median 29.7 ms | - | info |
+| Line scroll: Down at the bottom row | median 6.5 ms (2.9-3.7 in earlier runs) | <= 8 ms | OK |
+| Line scroll: wheel 3 lines | median 6.2 ms (1.9-3.6 earlier) | <= 8 ms | OK |
+| Page down | median 6.3 ms | <= 12 ms | OK |
+| Keystroke (edit, relex, row, caret, status, title, until idle) | median 1.2 ms | <= 3 ms | OK |
+| Hex view full repaint | median 7.9 ms (3.6-4.5 earlier) | <= 12 ms | OK |
+| Open 1 MB from C: to first paint | median 53 ms (first 205) | <= 150 ms | OK |
+| Open 10 MB from C: to first paint | median 391 ms (first 1979, cold cache) | <= 600 ms | OK (was 1255 before T16's fix) |
+| 10 MB split (core) | file_load 114 ms, init_source 263 ms (was 1122) | - | info |
+| Memory, in-memory doc | 1024 KB / 1 MB file, 10240 KB / 10 MB file | size + 3% | OK |
+| Open 100 MB on demand: first screen + hex at the end | 28 + 116 ms | <= 1000 ms | OK |
+| Open 100 MB on demand: full index | 17.6 s (4.4 s in the first run) | <= 3000 ms | **OVER: disk-bound** (raw ReadFile of the uncached file 9 MB/s = 11 s; 100 MB can't stay in VCACHE with 128 MB RAM) |
+| Memory, on-demand doc | 128 KB | <= 8 MB | OK |
+| Find next, literal, ignore case, 10 MB | 75 MB/s | >= 30 MB/s | OK |
+| Find next, literal, match case | 158 MB/s | >= 30 MB/s | OK |
+| Find next, regex `[xy]\d{4}[xy]` (no literal), 10 MB | 4.0 MB/s | >= 2 MB/s | OK |
+| Replace All, 10,000 matches in 1 MB | 993 ms (undo 1131 ms, info) | <= 2000 ms | OK |
+| GDI objects after 50 tabs | 2 before, 2 after | no growth | OK |
+| Startup to window visible + idle (process load included) | median 180 ms (77 in earlier runs) | <= 300 ms | OK |
+| Startup + session restore, 10 small files | median 292 ms | <= 1000 ms | OK |
+The last run came right after a VM restart with VM B busy, so its scroll/hex numbers are about 2x the earlier runs;
+every run was within budget except the disk-bound 100 MB index.
+
+### Bug-bash checklist
+- VNC on VM A (pica copied to `C:\PT17` so settings stay out of the project): C file coloured, hex view toggle,
+  Find (all three pages, token submenus, the Ctrl+A / stale-status bugs above), Find in Files over
+  `M:\dev\editor\src` (106 hits in 29 files, results panel, F4 caption), Options (5 pages), binary file -> hex view +
+  bar (opened through a second instance), the exit prompt with 2 modified files (Discard left both files unchanged
+  on disk), the window dragged to its minimum size (menu wraps, toolbar clips, status parts shrink; usable),
+  second instance with file arguments (5 at once, see bug 7).
+- Selftests (13/13, st_scenarios 525 checks): tabs open/close/switch, save cycles, close during save, undo/redo
+  across text and hex edits, mixed EOL / invalid UTF-8 / UTF-16 fixtures in both views, paste incl. RawBytes with
+  NUL, read-only and locked files, external changes, 20 MB on-demand edits while indexing (refused, then allowed),
+  session + crash recovery, every accelerator, AltGr, GDI after 30 tabs.
+- Not done (VM time): High Contrast scheme switch (WM_SYSCOLORCHANGE handling reviewed: the frame forwards it to the
+  common controls and re-applies colours), Fixedsys / Lucida Console visual pass (T08 shot Fixedsys), a full disk
+  (covered by FaultFs in st_session / T05 suites).
+
+### Tests
+- VC6 full `w98 build editor`: 0 warnings. `pica.exe -selftest -cfg C:\PICATEST`: 13 passed, 0 failed (0 skipped);
+  st_scenarios 525 checks incl. "t17 fixes" 68. After bug 13: `-selftest docio watch largefile session` 4/4, then the
+  full selftest again on the final tree: 13 passed, 0 failed. `python3 tools/lint.py`: 0 findings.
+- `pica.exe -bench -cfg C:\PICATEST`: 20 OK, 1 OVER (disk-bound 100 MB index), 4 info.
+
+### Screenshots (`docs/shots/t17_*.png`, all read and checked)
+t17_text_c (C file coloured), t17_hex (hex view of the same file), t17_find_tokens (Find page with the regex token
+submenus), t17_fif_results (results panel), t17_options (General page, no "?" button), t17_notify_binary (binary
+bar + hex view), t17_exit_prompt (Unsaved Changes dialog). Visual review: nothing misaligned or clipped; fixed the
+"?" button, the stale status line and the 26-entry token menu.
+
+### Interface notes / changes
+- New in shared win headers: `render_int.h` (`gdi_track/gdi_delete/gdi_live`; **new GDI objects in win code must use
+  them**), `fifworker_int.h` (`finddlg_bench`). `res/menu.rc2`: IDA_FIND has 9 entries (Ctrl+F, Ctrl+H,
+  Ctrl+Shift+F added).
+- Single instance: same `"PICA1\0<cwd>\0<args>\0\0"` WM_COPYDATA block; `pica.exe "file"` from Explorer works once
+  per file (T19's associations need nothing new). The settings folder is the exe folder when it is writable.
+
+### Gotchas
+- The scratchpad folder is shared by every agent of the session: use task-prefixed file names.
+- vncdo `ctrl-shift-x` arrives without Shift on VM A; use the menus or toolbar for Shift shortcuts over VNC.
+- After someone reboots VM A, check that `M:` answers (`w98 sh "dir M:\dev"`) before running pica from M:. A
+  pica.exe started from a dead share hard-hung the whole VM (frozen clock, VNC dead) and needed a force restart.
+  `kill` didn't end 86Box (it ignored SIGTERM): confirm the process is gone before starting the VM again, or two
+  86Box processes run on the same VHD.
+
+### Open issues
+- 100 MB full index on the emulated disk is I/O-bound (9-25 MB/s uncached), far from the 3 s budget; only a faster
+  disk helps. The first screen and hex view are usable within 150 ms meanwhile.
+- The extreme colouring case (~70 runs per row) repaints in 30 ms. A per-colour batched draw (one ExtTextOutW per
+  colour per row) would fix it; not done (risky this late, not a budget case).
+- Undo of a 10,000-match Replace All takes ~1.1 s with no progress window.
+
+## T19 Installer: setup.exe, upgrade, uninstall, file associations, "Open with Pica" (wave 4, agent 86box-d1-T19, 2026-11-10)
+### Built
+- `setup/setup.cpp`: command line, wizard (PropertySheetA PSH_WIZARD: Welcome / Folder and options / File types /
+  Installing / Finish), silent install, uninstall flow (questions, temp-copy handshake), Pica-running Retry loop.
+- `setup/inst.cpp`: the work: payload extraction (write `*.NEW`, then swap), WININIT.INI `[rename]`, registry
+  (associations with saved previous values, ProgID, `*\shell\Pica`, Add/Remove entry), IShellLink shortcuts, settings
+  purge, uninstall. Every step goes to the log (`%TEMP%\PICASET.LOG` or `/LOG=`).
+- `setup/setup.h`, `setup_ids.h`, `setup.rc` (pages + RCDATA payload), `uninst.rc`, `setupver.rc2` (icon = `res/pica.ico`,
+  VERSIONINFO from `res/appinfo.h`), `setup/Makefile` (CRLF; targets `all`, `old`, `shtest`, `clean`).
+- `setup.exe` (921 KB) embeds `..\pica.exe`, `obj\uninst.exe` (64 KB, same objects, no payload: always uninstalls) and,
+  if present at build time, `..\README.TXT` / `..\LICENSE.TXT`. The version Setup shows/stores is read from the
+  embedded pica.exe's VS_FIXEDFILEINFO, not from a constant.
+- `setup/shtest.cpp` -> `obj\shtest.exe`: test helper (ShellExecuteEx verbs, wait for a Pica title, close Pica,
+  file version, association dump, key exists, WININIT dump, reboot). Not shipped.
+- `tools/patch_ver.py`: copy of an exe with another version (0.9) for the upgrade/downgrade tests.
+- `docs/INSTALLER.md`: behaviour, switches, exit codes, registry layout, build, limits, release notes.
+- Screenshots: `docs/shots/t19_welcome.png`, `t19_welcome_upgrade.png` ("Upgrade Pica 0.9 -> 1.0"),
+  `t19_folder_fresh.png`, `t19_folder.png` (upgrade: folder fixed), `t19_types.png`, `t19_running.png` (Retry dialog),
+  `t19_finish.png`, `t19_context_menu.png` (Explorer right-click "Open with Pica"), `t19_opened_via_menu.png`,
+  `t19_addremove.png`, `t19_uninstall_confirm.png`, `t19_uninstall_settings.png`, `t19_uninstall_done.png`.
+### Interface notes
+- Switches: `/S`, `/D=<dir>` (last, no quotes), `/TYPES=default|none|all|.txt,.c|+.bat,-.ini`, `/STARTMENU=0|1`,
+  `/DESKTOP=0|1`, `/CONTEXT=0|1`, `/RUN`, `/FORCE`, `/LOG=<file>`, `/UNINSTALL [/S] [/PURGE]`, test-only `/_LOCKTEST`.
+  Exit codes 0 ok, 1 error/cancel, 2 Pica running, 3 restart needed, 4 newer installed (silent).
+- Registry: `HKLM\Software\Pica` (InstallDir, Version, Files, Types, StartMenu, Desktop, ContextMenu, StartMenuLnk,
+  DesktopLnk) with `Previous\Open` (per .ext: `=old`, `!` no default, `-` no key), `Previous\Edit` (per ProgID: old
+  edit command / `-` = verb added by us), `Previous\Created` (HKCR keys we created; deleted once empty);
+  `HKCR\Pica.Document` (DefaultIcon, shell\open\command `"<dir>\pica.exe" "%1"`); `HKCR\.ext` = Pica.Document for
+  ticked text/source/web types; `HKCR\<ProgID>\shell\edit\command` for ticked script types (.bat .cmd .reg .inf .vbs
+  .js keep their `open`); `HKCR\*\shell\Pica` "Open with &Pica"; `HKLM\...\Uninstall\Pica`.
+- Applying associations is idempotent "desired state": re-running Setup restores unticked types, adds ticked ones,
+  keeps the first saved previous value, leaves entries someone else changed alone. Restores only while the entry
+  still points at Pica. Deletion of HKCR keys only when empty (Win9x RegDeleteKey deletes whole trees).
+- Upgrade replaces only pica.exe, uninst.exe, README.TXT, LICENSE.TXT (+ deletes files an older version listed in
+  `Files` that this one doesn't ship). pica.ini, session1/2.ini, backup\, langs\ and user files are never touched.
+  With Pica installed, the folder is fixed (uninstall to move it); `/D` to another folder is refused.
+- Uninstall: `uninst.exe` in the folder copies itself to `%TEMP%\PICAUN.EXE`, starts it (`/UNINSTALL /_CHILD=<pid>`)
+  and waits on a named event; the result code comes back through a 4-byte named file mapping. The copy deletes
+  uninst.exe after the original exits, removes the folder if empty and schedules itself with `NUL=` in WININIT.INI.
+  `setup.exe /uninstall` (from elsewhere) runs synchronously. "Delete settings" (default No; `/PURGE`) removes
+  pica.ini, session1/2.ini, ~pica.tst, backup\* in the install dir, `Application Data\Pica` and `<windows>\Pica`.
+### Interface changes / deviations from DESIGN
+- None to Pica. Deviations from the T19 text: Start menu shortcut is `Programs\Pica.lnk` (no folder); script types
+  without a program that runs them (.cmd on Win98) get the `open` mapping instead of an edit verb; the folder can't be
+  changed on an upgrade.
+### Requests for files I don't own
+- None required. For T18: release builds should run `w98 build 'editor\setup' clean` then `w98 build 'editor\setup'`
+  after the final pica.exe and README.TXT exist (README is picked up from `..\README.TXT`; override with
+  `nmake README=..\release\Pica-1.0\README.TXT` if T18 keeps it elsewhere). Ship `setup.exe` next to the zip.
+- Root `.gitignore` already covers `setup/obj/` and `setup/setup.exe` (`obj/`, `*.exe`, `*.res`).
+### Gotchas
+- WININIT.INI needs 8.3 paths; the file renamed through it comes back as `PICA.EXE` (capitals). Write `NUL=old`
+  before `old=new`. WritePrivateProfileString can't write duplicate `NUL=` keys, so the file is edited by hand.
+- **Rebooting VM A from agent98**: `ExitWindowsEx` from a console program started by agent98 does not reboot (the
+  console window vetoes; with EWX_FORCE it killed Explorer and still didn't reboot). `w98 start 'rundll32.exe
+  shell32.dll,SHExitWindowsEx 2'` rebooted cleanly (agent98 back after ~30 s, WININIT processed).
+- nmake didn't rebuild `obj\setup.res` once although its inputs were newer (VM clock was a day behind the Mac before
+  a reboot); `clean` fixes it.
+- `regedit /e` HKCR exports differ only in two `"Implementing"` values (component-category cache timestamps that
+  Windows rewrites at boot); everything else must be byte-identical.
+### Tests (VM A, all with the lock)
+- Build: `setup.cpp`, `inst.cpp`, `shtest.cpp`, rc files: zero warnings at /W3 (clean build). `python3 tools/lint.py
+  setup/*.cpp setup/*.h` 0 findings; rc/rc2/Makefile/setup_ids.h CRLF, ASCII.
+- Fresh install (`obj\setup09.exe /S`, 0.9): rc 0, pica.exe + uninst.exe, Start menu link, 10 default types,
+  context menu. Launch checks with ShellExecuteEx: `a.txt` (default verb) -> "a.txt - Pica"; `b.c` open -> "b.c -
+  Pica"; verb `Pica` on `C:\T19\long name test.txt` -> "long name test.txt - Pica" (long name with spaces arrives
+  intact; all three in one process via the single instance). `run.bat` open still runs it (marker file written).
+- Upgrade 0.9 -> 1.0 with Pica running: silent rc 2, version still 0.9; after closing Pica: rc 0, pica.exe 1.0;
+  pica.ini, session1/2.ini (fc /b), langs\my.lng, notes.txt, backup\T0000A01.BAK unchanged.
+- Downgrade: setup09 /S over 1.0 -> rc 4 (nothing changed); with /FORCE -> rc 0. Repair (same version) rc 0.
+- `/TYPES=+.bat,+.reg,+.cmd,+.js,-.ini`: .ini restored to inifile; batfile/regfile/JSFile edit commands -> Pica
+  (previous Notepad commands saved); .cmd (no ProgID on Win98) -> Pica.Document. `edit` on run.bat -> "run.bat -
+  Pica"; `open` on run.bat still runs it.
+- Locked files (`/_LOCKTEST`, 0.9 installed): rc 3, PICA.NEW/UNINST.NEW + WININIT.INI lines; after a reboot
+  pica.exe and uninst.exe are 1.0 and the .NEW files are gone.
+- Silent uninstall via the installed `uninst.exe /S` (temp-copy path): rc 0 passed back, all associations restored
+  (log shows each), Pica keys, shortcut, uninst.exe deleted; kept settings + user files left the folder in place.
+  HKCR export identical to the pre-install export (except the two "Implementing" timestamps); Uninstall key export
+  byte-identical; `HKLM\Software\Pica` absent.
+- Wizard over VNC: upgrade 0.9 -> 1.0 with .bat ticked in the GUI, Pica running -> Retry dialog -> closed Pica ->
+  Retry -> Finish -> "Start Pica now" started it. Explorer right-click on `my.lng` shows "Open with Pica" (bold:
+  the only verb for that type) and opens it in Pica. Add/Remove Programs lists "Pica 1.0"; Add/Remove -> confirm ->
+  "delete settings" Yes -> "Pica was removed"; list refreshed without Pica.
+- Final round with the final binary: fresh wizard pages + Cancel ("Quit Pica Setup?" -> exit 1); `/S /DESKTOP=1
+  /D=C:\Program Files\Pica Test` (spaces) rc 0, desktop link created, b.c opens in Pica; `setup.exe /uninstall /S
+  /PURGE` rc 0: folder, both links, settings gone; registry again identical to the pre-install export.
+- VM left clean: no Pica folder, no Pica keys, original associations, no WININIT.INI, no PICAUN.EXE, `C:\T19`
+  deleted, no Pica/setup processes. Logs and exports kept on the Mac in `setup/obj/reg/` (ignored by git).
+### Open issues
+- The Browse button (SHBrowseForFolder, adds `\Pica`) was not exercised over VNC.
+- Not tested on the real T40 (only VM A). No print verb on Pica.Document; "New > Text Document" reads "Pica
+  Document" while .txt is mapped (Notepad++ behaves the same).
+### Addendum (overseer follow-up): one ProgID per type
+- `HKCR\Pica.Document` is replaced by one ProgID per ticked type, `Pica.<ext>` (`.txt -> Pica.txt`). It is rebuilt on
+  every run from the saved previous ProgID: name copied ("Text Document", "C Source file", "Configuration Settings";
+  else "<EXT> File"), every non-`open` verb copied with its whole subtree (txtfile/inifile `print`, VC6's "&Open with
+  MSDev" incl. `ddeexec`), `open` = Pica, DefaultIcon = Pica. `.ext\ShellNew` is never touched. Uninstall restores
+  `HKCR\.ext` (only while it points at `Pica.<ext>` or the legacy `Pica.Document`) and deletes `Pica.<ext>`.
+- Migration: an install made by the earlier setup (shared `Pica.Document`) is treated as ours; the upgrade reuses the
+  saved previous values, repoints each `.ext` to `Pica.<ext>` and deletes `Pica.Document`.
+- `shtest` gained `typename <file>` (SHGetFileInfo SHGFI_TYPENAME, the Type column) and `verbs <.ext>`.
+- Tests (VM A): `obj\setup09_legacy.exe` (the earlier setup.exe with all three version resources patched to 0.9,
+  i.e. old scheme) `/S /TYPES=+.bat` -> `.txt`/`.c` = Pica.Document; new `setup.exe /S` -> rc 0, log "HKCR\.txt
+  Pica.Document -> Pica.txt", Pica.Document deleted. `verbs .txt`: open = Pica, `print` = `C:\WINDOWS\NOTEPAD.EXE /p
+  %1`, ShellNew present; `.ini` print kept; `.c` keeps "Open with MSDev". Type names: a.txt "Text Document", b.c "C
+  Source file". a.txt and b.c still open in Pica. Explorer right-click on a.txt shows Open with Pica / **Open** /
+  Print (`docs/shots/t19_txt_menu_print.png`, details pane says "Text Document"; Print not executed). Background >
+  New lists "Text Document" (`t19_new_menu.png`); clicking it created `New Text Document.txt` (0 bytes, type name
+  "Text Document"). `uninst.exe /S /PURGE` rc 0: all `.ext` restored, every `Pica.<ext>` deleted; HKCR export again
+  identical to the pre-install export except the two boot-time "Implementing" timestamps; Uninstall key export
+  byte-identical; `HKLM\Software\Pica` absent. Build zero warnings at /W3, lint 0 findings. VM left clean (no Pica
+  folder/keys, no WININIT.INI, no temp files, C:\T19 deleted, Explorer window closed).
+- Limit: the copied verbs are a snapshot (a verb added to `txtfile` later appears on .txt after a repair run or
+  uninstall); `shellex` handlers of the old ProgID are not copied.
+
+## T16 Core QA: adversarial tests and fixes (wave 4, agent 86box-d1-T16, 2026-11-10)
+### Built
+- `src/core/ptree.cpp`: **line-start cache** inside PieceTree (design below); `break_pos`, `breaks_before` and the piece
+  split of every edit (`ensure_boundary_`) use it. New private header `src/core/ptree_int.h` (test hook
+  `pt_line_cache_enable(int)`, timing comparisons only).
+- `src/core/doc.cpp`: **memchr EOL counting** (unit 1 and UTF-16) for `init_source`/`reset_source`/recounts and the
+  edit windows; one pass at load (the piece tree already counted the break byte). The old per-unit loop stays as the
+  reference (odd UTF-16 windows, tests). New private header `src/core/doc_int.h` (`doc_count_eol_test`).
+  `Document::reset_source_indexing` (optional item, below).
+- `src/core/lexgen.cpp`: bug fix (below).
+- `tests/t_adversarial.cpp` (suite `adversarial`, 44,230 checks): 1 line cache, 2 pathological inputs, 3 regex
+  bombs / limits / garbage / Replace All edges, 4 lexer garbage + convergence, 5 settings / session / .lng / hex /
+  go-to corruption, 6 backup corruption, 7 undo stress, 8 codec round trips, 9 OOM sweeps, 10 EOL counting + open
+  timing, 11 reset_source_indexing. Section times go to the verbose log (`-q` off).
+- `tests/mac/pfuzz.cpp`: mutation fuzzer for the parsers (README in `tests/mac/README.md`); `tests/t_fif.cpp` fixture fix.
+
+### Interface notes
+- **Line-start cache.** The bytes a piece refers to never change (original immutable, add chunks append-only), so
+  break counts are cached per SOURCE range, independent of the tree shape: per 64 KB-aligned block of a source
+  (src, start >> 16) an entry holds the break count of each 512-byte sub-block (u16 x 128; UTF-16: one array per
+  start parity, because a piece counts pairs at even offsets from its own start). Entries fill lazily from the block
+  start up to the sub-block a query needs. A query over [x, y) scans at most ~512 bytes at each end and adds whole
+  sub-blocks in between (ranges < 2 KB just scan). Edits and undo never invalidate anything; `clear`/`init`
+  (chunk ids are reused), `set_break_spec`, `set_original` drop the table, every lookup re-checks spec and original,
+  `swap` swaps it with the tree. An add-chunk sub-block is cached only once the chunk holds every byte it reads.
+  Memory: 4-way set-associative, sets sized to the document when allocated (1 set = 4 entries = 2 KB for a 93 KB
+  file, at most 64 sets = 131 KB covering 16 MB; LRU replacement beyond). Allocation failure just disables it.
+  `PieceTree::line_cache_bytes()` (new, public, end) reports the table size.
+- **Timings, VM A (VC6 /O2), random calls:** 93 KB / 3,000-line fresh document: `line_start` 330 -> 8 us, `line_of`
+  165 -> 7 us; 10 MB / 330,000 lines: `line_start` 380-440 -> 8.7 us warm (16-19 us in the first 0.3 s while the
+  table fills), `line_of` 190 -> 7.3 us. Mac: 4.8 -> 0.1 us. All well under the 20 us target.
+- **Open speed:** `Document::init_source` of 10 MB CRLF on VM A: 1122 ms -> 263 ms (`-bench` breakdown; `file_load`
+  114 ms), so "open 10 MB to first paint" is 387 ms median (budget 600, was 1255). In the suite (with a 10 MB copy):
+  PieceTree::init 220 ms, init_source 330-390 ms; UTF-16 LE 20 MB 770-820 ms. The EOL counts are derived as P = CR-LF pairs,
+  crlf = P, lf = LFs - P, cr = CRs - Q with Q = P - x + y (x/y = a CRLF pair crossing the window's start/end).
+- **`int Document::reset_source_indexing(ByteSource* src, const EncSpec& enc, epos bom_len, EolStyle eol);`**
+  (public, end of Document): `reset_source` + `init_source_indexing` in one call: busy -> E_BUSY, inside a group ->
+  E_STATE (src deleted in both cases); else EV_RESET (removed = old length, inserted = new length, lines_added 0),
+  undo cleared, on-demand mode, edits refused until `finish_indexing` (EV_INDEXED). docio's reload path
+  (`reset_source(empty)` + `init_source_indexing`) can switch to it.
+- EOL counts keep the `detect_eol` classification exactly (lone CRs, CR-LF pairs across piece/span boundaries,
+  UTF-16 look-alike bytes, odd tails); `eol_counts()` after any edit still equals a full recount.
+
+### Interface changes / deviations from DESIGN
+- Additions only: `PieceTree::line_cache_bytes()`, `Document::reset_source_indexing(...)`, private members, the
+  forward declarations `struct PtLineCache; struct PtLcEntry;` in ptree.h, private headers `ptree_int.h` and
+  `doc_int.h`. No declared signature changed.
+
+### Bugs found and fixed (each with its regression test)
+1. `lang_parse`/`lang_init`: a keyword of exactly KW_MAX_LEN + 1 = 48 characters in a .lng file failed with E_NOMEM
+   "out of memory" instead of a syntax error (`add_words` turned every `KwTable::add` error into E_NOMEM); an
+   override file with such a word was reported as out of memory. Found by `adv_lng_corrupt`; test
+   `adv_lng_long_keyword`.
+2. Performance: `Document::line_start`/`line_of` scanned up to 64 KB per call (225/110 us on VM A). Line-start
+   cache; tests `adv_cache_tree_run` (4 break specs, every edit kind, undo-style re-insert, typing into a growing add
+   piece, spec changes, swap, clear + init over another source, unit-2 slow path), `adv_cache_huge` (4 GB - 2,
+   blocks at 0xFFFF), `adv_cache_doc` (replace / undo / redo / convert_eol / reinterpret / convert), `adv_cache_oom`,
+   `adv_cache_timing`. Mutation check: 4 of 5 injected cache bugs fail the suite (the 5th is equivalent).
+3. Performance: opening 10 MB spent ~1 s in `count_eol_` (per-byte state machine over 4 KB `read` copies). memchr
+   paths; tests `adv_eol_counts` (ANSI / UTF-16 LE / BE, CR mode, look-alike bytes, odd tails, 1-7-byte source
+   spans, every edit, convert_eol, reinterpret), `adv_eol_windows` (direct comparison with the reference loop on
+   random windows, all known-count paths; every injected x/y or pairing bug fails it), `adv_open_timing`.
+4. `tests/t_fif.cpp` `test_windowed`: `s1.total > 0` failed with `-long` (the random file had no `^x.*?y$` line in
+   ~1 of 5 seeds): the fixture now always contains one hit per pattern.
+
+### What the adversarial suite covers (no other core bugs found)
+- Pathological inputs (empty, BOM-only x3, all NUL, all CR, all LF, broken EOL, random bytes, invalid/overlong/
+  surrogate/truncated UTF-8, UTF-16 with lone surrogates and an odd tail, a 70 KB line, controls) x 8 encodings:
+  detect, line structure, layout + wrap of every line, forward/backward character walks agree, snap_char, decode ->
+  encode byte-exact, search (8 patterns incl. empty matches; find_all = count; backward = last forward match),
+  highlighting, 14 line/case/comment/indent/word edits then undo-all = original bytes, convert to 5 encodings
+  (check_convert = convert counts) + undo, convert_eol x3 + undo, reinterpret round trip. 5 MB line (layout index,
+  literal + regex search both directions, highlighting, duplicate / move line). 4 GB - 2 document: search at both
+  ends, edits at EPOS_MAX (E_TOOBIG at the limit), undo.
+- Regex: 21 classic bombs on 20 KB (slowest 0.55 s on VM A, E_BUDGET allowed), 27 malformed/unsupported patterns
+  (error position and message), 1,001-char and 101-deep limits, 3,000 garbage patterns with NUL / bad markers /
+  surrogates / U+10FFFF in all modes against invalid UTF-8 (count = find_all, ranges, backward, expand). 18 Replace All
+  edge cases with exact expected output (`^`, `$` before CRLF, `a*`, unset groups, `\U \E \u`, `$$`, unrepresentable
+  replacement in ANSI, CRLF -> LF, lookahead, raw bad bytes, hex mode), each undone.
+- Lexers: 200 random lines per language with garbage code points and random start states (state < 0x7FFF, styles <
+  ST_COUNT, NULL styles = same state); Highlighter convergence on a garbage document under random edits + undo vs a
+  fresh full lex, all 13 languages.
+- Settings: config text truncated at every byte + 500 mutations (values in range, strings terminated, write -> parse
+  -> write stable); session truncated at every byte (accepted only when it is the whole session) + 500 mutations
+  (invariants, session_validate agrees); ini.lng and diff.lng truncated at every byte, the others every 97 bytes, +150
+  mutations each; 20,000 garbage hex patterns / go-to expressions.
+- Backups: every byte of a backup file flipped, junk appended, trailer doubled, a data byte missing: structure damage
+  is never accepted; whatever is listed opens with the right size (no checksum by design: a flipped data byte or
+  header value that still parses is accepted).
+- Undo stress: 100,000 ops (1,000,000 with `-long`): edits, undo, redo, multi-op groups, save points, with a random
+  allocation failure before 1 op in 50 (E_NOMEM must leave the bytes unchanged) vs a flat model with its own history
+  (bytes, modified, can_undo/redo; pieces <= 3/op, add buffer <= bytes inserted); full undo then redo; UndoLog memory
+  80 bytes per single-op group.
+- Codecs: all 38 SBCS tables + 6 Unicode encodings: every representable character from UTF-8 -> X -> UTF-8 byte-exact,
+  BOM/origin, undo/redo, reinterpret both ways; lossy counts and first_bad exact; invalid source bytes -> U+FFFD.
+- OOM at every allocation (sweep until the failing allocation is never reached; probed after each run), 24
+  operations: replace 300 KB, undo, redo, convert, convert_eol x2, reinterpret, replace_text, Replace All x3,
+  INI parse+write, config load+store, session parse+write, long-line index, layout + wrap, highlighter, lang_parse,
+  move/duplicate/case/comment/indent/insert text: success = right result (and undo restores), failure = E_NOMEM with
+  state unchanged and tree consistent, no leaks.
+- Mac fuzz pass (`tests/mac/pfuzz.cpp`, ASan + UBSan): 4 seeds x 20 min = 54.6 million inputs over INI/config/session,
+  .lng, hex + go-to, regex compile/search/expand, backup headers, detect + Document: no crash, no sanitizer report,
+  no invariant violation, so `tests/data/fuzz/` stays empty (pfuzz replays files there when they exist).
+
+### Requests for files I don't own
+- T17 / `src/win/docio.cpp` (optional): the on-demand reload can call `d->reset_source_indexing(r.src, r.det.enc,
+  r.det.bom_len, r.det.eol_style)` instead of `reset_source(empty)` + `init_source_indexing` (one EV_RESET, no empty
+  MemSource). Signature exactly as in Interface notes.
+- T17 / tab ids (`tab_new`, `g_app.next_tabid`): `backup_write` refuses tab ids > 0xFFFFF (5 hex digits in the 8.3
+  name) with E_RANGE, and `session_from_ini` raises next_tabid past the highest id: after 1,048,575 tabs in the
+  lifetime of a cfg folder, new tabs are never backed up. Wrap next_tabid to 1 above 0xFFFFF (skipping ids in use).
+- Overseer (DESIGN 6.19, optional): `config_store` returns void, so a failed `Ini::set` (out of memory) silently writes
+  a settings file with keys missing (the OOM sweep shows it: success with an incomplete INI). Returning int would let
+  `app_save_config` skip the write.
+
+### Gotchas
+- Timing loops must not draw from `tf_rand` or contain checks: the number of iterations depends on the machine, and
+  VC6 must report the same check counts as the Mac (the timing tests save/restore `tf->rng`).
+- `e_test_fail_after` cannot tell whether the failure fired: the sweep probes it afterwards with throwaway
+  allocations; prepare test inputs before arming it (a test Vec failing inside the window looks like a core bug).
+- In an edit window the x/y corrections cancel between the before and after counts, so only a direct comparison
+  (`doc_count_eol_test`) catches them.
+- Converting to the encoding the document already has records no undo step; an empty Searcher pattern is E_SYNTAX.
+
+### Tests
+- Mac: `make -C tests` (lint 180 files 0 findings; coretest strict + ASan/UBSan): **189,780 checks, 0 failed**
+  (was 145,550). `adversarial` alone 44,230 (strict and ASan identical; 8 more seeds pass); `-long`: adversarial
+  427,077 checks, full coretest -long 972,032 checks with the fif fixture fixed. `make -C tests mac`: pfuzz 3 s
+  (~190,000 inputs) + rxfuzz 10,000 cases, 0 mismatches. Suite time: Mac 6 s, VM A 2.7 min (undo stress 51 s).
+- VC6 (VM A): `w98 build editor t_adversarial` zero warnings, **44,230 checks, 0 failed** (same as the Mac);
+  `w98 build editor` (pica.exe) zero warnings; `-bench`: 20 OK, 1 OVER (below).
+  `w98 build editor test`: coretest **189,835 checks, 0 failed** (Mac + the VC6-only winenc 48 and fileops 7).
+  `pica.exe -selftest -cfg C:\PICATEST`: **13 passed, 0 failed (0 skipped)** with the new core.
+
+### Open issues
+- `-bench` "open 100 MB on demand: full index" is OVER (18 s vs 3 s): disk-bound in the VM (raw ReadFile of the file
+  6 MB/s, 16 s), not core CPU (file_index's counting is the same memchr loop).
+- Brace matching / Find All over > 64 K-char lines and the other T03/T06 open issues are unchanged.

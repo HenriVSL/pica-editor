@@ -15,6 +15,7 @@
 #include "views.h"
 #include "selftest.h"
 #include "render.h"
+#include "render_int.h"
 #include "clip.h"
 #include "hexfmt.h"
 #include "edops.h"
@@ -165,7 +166,7 @@ static void hv_fonts(HexView* v)
   HDC dc;
   TEXTMETRICA tm;
   HFONT old;
-  if (v->own_font && v->font) DeleteObject(v->font);
+  if (v->own_font && v->font) gdi_delete(v->font);
   v->font = 0; v->own_font = 0;
   if (rf && rf->normal && rf->cw > 0 && rf->ch > 0) {
     v->font = rf->normal;
@@ -176,9 +177,9 @@ static void hv_fonts(HexView* v)
   {
     int h = g_app.cfg.font_px > 0 ? g_app.cfg.font_px
                                   : -MulDiv(g_app.cfg.font_pt > 0 ? g_app.cfg.font_pt : 10, GetDeviceCaps(dc, LOGPIXELSY), 72);
-    v->font = CreateFontA(h, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                          DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN,
-                          g_app.cfg.font_face[0] ? g_app.cfg.font_face : "Courier New");
+    v->font = (HFONT)gdi_track(CreateFontA(h, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                                           CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN,
+                                           g_app.cfg.font_face[0] ? g_app.cfg.font_face : "Courier New"));
   }
   if (!v->font) v->font = (HFONT)GetStockObject(ANSI_FIXED_FONT);
   else v->own_font = 1;
@@ -661,8 +662,8 @@ static void hv_paint(HexView* v)
   hv_validate(v);
   if (ps.rcPaint.top < v->data_top) hv_paint_ruler(v, dc);
   {
-    HRGN clip = CreateRectRgn(0, v->data_top, v->cx, v->data_bottom);
-    if (clip) { SelectClipRgn(dc, clip); DeleteObject(clip); }
+    HRGN clip = (HRGN)gdi_track(CreateRectRgn(0, v->data_top, v->cx, v->data_bottom));
+    if (clip) { SelectClipRgn(dc, clip); gdi_delete(clip); }
     for (y = v->data_top, row = v->t->hv.top_row; y < v->data_bottom; y += v->ch, row++) {
       HvRow r;
       if (y + v->ch <= ps.rcPaint.top || y >= ps.rcPaint.bottom) continue;
@@ -992,7 +993,7 @@ static LRESULT CALLBACK hv_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
   case WM_DESTROY:
     if (v) {
       if (v->doc) { v->doc->remove_listener(v); v->doc = 0; }
-      if (v->own_font && v->font) DeleteObject(v->font);
+      if (v->own_font && v->font) gdi_delete(v->font);
       SetWindowLongA(w, GWL_USERDATA, 0);
       delete v;
     }

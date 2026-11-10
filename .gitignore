@@ -13,3 +13,9 @@ tests/tmp/
 release/*/
 .DS_Store
 probe/*.TXT
+# runtime files when pica.exe runs from the project folder
+/pica.ini
+/session1.ini
+/session2.ini
+/T*.BAK
+/backup/

@@ -1011,24 +1011,11 @@ int docio_reload_ex(Tab* t, const EncSpec* as_or_null, int undoable, int flags)
     delete r.src;
     if (rc == E_OK) d->set_saved();
   } else if (r.mode == LM_ONDEMAND) {
-    // On demand (also from in-memory): EV_RESET to an empty document (listeners drop their state; the old source is
-    // closed), then the file's pieces without counts, exactly like a fresh open; the indexer posts EV_INDEXED.
-    MemSource* empty = new MemSource();
-    if (!empty) { delete r.src; rc = E_NOMEM; }
-    else rc = d->reset_source(empty, d->enc(), 0, d->eol_style(), 0);        // takes 'empty'
-    if (rc != E_OK) {
-      if (empty) delete r.src;
-    } else {
-      t->fsrc = 0;                                   // deleted with the old source
-      rc = d->init_source_indexing(r.src, r.det.enc, r.det.bom_len, r.det.eol_style);   // takes r.src
-      if (rc != E_OK) {
-        t->ondemand = 0;
-        d->set_read_only(true);
-        if (!quiet) ui_error("%s could not be reloaded (%s). The tab is empty now: close it and open the file again.",
-                             ui_path_name(t->path), e_errname(rc));
-        docio_view_refresh(t);
-        return rc;
-      }
+    // On demand (also from in-memory): one EV_RESET into the file's pieces without counts, exactly like a fresh
+    // open (the old source is closed); the indexer posts EV_INDEXED. On failure the document is unchanged.
+    rc = d->reset_source_indexing(r.src, r.det.enc, r.det.bom_len, r.det.eol_style);   // takes r.src
+    if (rc == E_OK) {
+      t->fsrc = 0;                                   // deleted with the old source; set again below
       async = 1;
     }
   } else if (t->ondemand || t->fsrc) {

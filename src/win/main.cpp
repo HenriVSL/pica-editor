@@ -251,16 +251,42 @@ static void show_lang_errors()
 
 // ---- message dispatch and idle work ----
 
+// Ctrl+Alt+key that the current keyboard layout turns into a character (AltGr, e.g. AltGr+S = s-acute on Polish
+// Programmers): such a key types, it is not an accelerator. Only the keys IDA_MAIN uses with Ctrl+Alt are checked,
+// because ToAscii consumes dead keys.
+static int altgr_char(const MSG* m)
+{
+  BYTE ks[256];
+  WORD ch = 0;
+  if (m->message != WM_KEYDOWN || GetKeyState(VK_CONTROL) >= 0 || GetKeyState(VK_MENU) >= 0) return 0;
+  if (m->wParam != 'S') return 0;
+  if (!GetKeyboardState(ks)) return 0;
+  if (ToAscii((UINT)m->wParam, (UINT)((m->lParam >> 16) & 0xFF), ks, &ch, 0) != 1) return 0;
+  return (ch & 0xFF) >= 0x20;
+}
+
+// Ctrl+A in an edit field of a dialog selects its text (Win98 edit controls ignore it; users expect it).
+static int dialog_select_all(const MSG* m)
+{
+  char cls[16];
+  if (m->message != WM_KEYDOWN || m->wParam != 'A') return 0;
+  if (GetKeyState(VK_CONTROL) >= 0 || GetKeyState(VK_MENU) < 0 || GetKeyState(VK_SHIFT) < 0) return 0;
+  if (!GetClassNameA(m->hwnd, cls, sizeof(cls)) || lstrcmpiA(cls, "Edit") != 0) return 0;
+  SendMessageA(m->hwnd, EM_SETSEL, 0, -1);
+  return 1;
+}
+
 void app_dispatch(MSG* m)
 {
   if (g_app.find_dlg && (m->hwnd == g_app.find_dlg || IsChild(g_app.find_dlg, m->hwnd))) {
+    if (dialog_select_all(m)) return;
     if (g_app.accel_find && TranslateAcceleratorA(g_app.frame, g_app.accel_find, m)) return;
     if (IsDialogMessageA(g_app.find_dlg, m)) return;
   } else {
     // The incremental search box and the results panel keep their editing keys (Ctrl+C/V/X/Z/A) away from the main
     // accelerators, which would act on the document.
     if (isearch_translate(m) || results_translate(m)) return;
-    if (g_app.accel && g_app.frame && TranslateAcceleratorA(g_app.frame, g_app.accel, m)) return;
+    if (!altgr_char(m) && g_app.accel && g_app.frame && TranslateAcceleratorA(g_app.frame, g_app.accel, m)) return;
   }
   TranslateMessage(m);
   DispatchMessageA(m);
@@ -458,11 +484,39 @@ LRESULT main_on_copydata(HWND from, const COPYDATASTRUCT* cds)
   return TRUE;
 }
 
+// Files handed over while a modal window (message box, progress, Options) is up wait until the frame is enabled
+// again, so a tab never opens underneath a question about another tab.
+struct PendingBlock { WPARAM size; char* block; };
+static Vec<PendingBlock> g_pending_blocks;
+static UINT g_pending_timer = 0;
+
+static void CALLBACK copydata_retry(HWND w, UINT msg, UINT id, DWORD now)
+{
+  u32 i;
+  (void)w; (void)msg; (void)now;
+  if (!g_app.frame || !IsWindowEnabled(g_app.frame)) return;     // still modal: try again on the next tick
+  KillTimer(0, id);
+  g_pending_timer = 0;
+  for (i = 0; i < g_pending_blocks.size(); i++)
+    if (!PostMessageA(g_app.frame, WM_APP_COPYDATA_OPEN, g_pending_blocks[i].size, (LPARAM)g_pending_blocks[i].block))
+      e_free(g_pending_blocks[i].block);
+  g_pending_blocks.clear();
+}
+
 void main_on_copydata_open(WPARAM w, LPARAM l)
 {
   Vec<MainFileArg> files;
   char* block = (char*)l;
   if (!block) return;
+  if (g_app.frame && !IsWindowEnabled(g_app.frame) && !g_app.exiting) {
+    PendingBlock pb;
+    pb.size = w; pb.block = block;
+    if (g_pending_blocks.push(pb) == E_OK) {
+      if (!g_pending_timer) g_pending_timer = SetTimer(0, 0, 300, copydata_retry);
+      if (g_pending_timer) return;
+      g_pending_blocks.pop();
+    }
+  }
   if (main_parse_block(block, (u32)w, &files) == E_OK) open_file_args(&files);
   e_free(block);
   if (IsIconic(g_app.frame)) ShowWindow(g_app.frame, SW_RESTORE);
@@ -470,6 +524,10 @@ void main_on_copydata_open(WPARAM w, LPARAM l)
 }
 
 // Hands our command line to a running Pica. Returns 1 when it took it (this process should exit).
+// Explorer starts one "pica.exe" "%1" per selected file, all at about the same time: the first process to create the
+// mutex is the main instance; every later one waits (up to 15 s, a slow first start on real hardware) for its frame
+// window and hands its files over. WM_COPYDATA is only queued by the main instance (posted to itself), so files arrive
+// as tabs in the order the handoffs complete, even while it is still restoring its session.
 static int hand_off_to_running()
 {
   HANDLE mutex;
@@ -477,13 +535,14 @@ static int hand_off_to_running()
   Vec<char> block;
   char cwd[MAX_PATH];
   COPYDATASTRUCT cds;
-  DWORD res = 0;
+  DWORD res = 0, err;
   int i, tries;
   mutex = CreateMutexA(0, FALSE, APP_NAME "SingleInstance");
+  err = GetLastError();                                    // before any other call resets it
   other = FindWindowA(APP_CLASS_FRAME, 0);
-  if (!other && mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
-    for (tries = 0; tries < 30 && !other; tries++) {      // the first instance is still starting up
-      Sleep(100);
+  if (!other && mutex && err == ERROR_ALREADY_EXISTS) {
+    for (tries = 0; tries < 300 && !other; tries++) {      // the first instance is still starting up
+      Sleep(50);
       other = FindWindowA(APP_CLASS_FRAME, 0);
     }
   }
@@ -499,8 +558,16 @@ static int hand_off_to_running()
   cds.dwData = k_copydata_magic;
   cds.cbData = block.size();
   cds.lpData = block.data();
-  if (!SendMessageTimeoutA(other, WM_COPYDATA, 0, (LPARAM)&cds, SMTO_ABORTIFHUNG, 8000, &res)) return 0;
-  return res == TRUE;
+  // No SMTO_ABORTIFHUNG: a main instance busy with its startup (session restore, a big file) for a few seconds counts
+  // as "hung" to Windows, and giving up would open a second window. Retry once if the window was replaced meanwhile.
+  for (tries = 0; tries < 2; tries++) {
+    res = 0;
+    if (SendMessageTimeoutA(other, WM_COPYDATA, 0, (LPARAM)&cds, SMTO_NORMAL, 30000, &res) && res == TRUE) return 1;
+    Sleep(200);
+    other = FindWindowA(APP_CLASS_FRAME, 0);
+    if (!other) break;
+  }
+  return 0;
 }
 
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE prev, LPSTR cmdline, int show)

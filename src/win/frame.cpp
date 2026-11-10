@@ -5,6 +5,7 @@
 #include <commctrl.h>
 #include <string.h>
 #include "app.h"
+#include "render_int.h"
 #include "tab.h"
 #include "cmds.h"
 #include "ui.h"
@@ -74,9 +75,9 @@ static HWND toolbar_create(HWND parent)
   if (!tb) return 0;
   SendMessageA(tb, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
   il = ImageList_Create(16, 16, ILC_COLORDDB | ILC_MASK, TOOLBAR_BUTTONS, 0);
-  bmp = LoadBitmapA(g_app.hinst, MAKEINTRESOURCEA(IDB_TOOLBAR));
+  bmp = (HBITMAP)gdi_track(LoadBitmapA(g_app.hinst, MAKEINTRESOURCEA(IDB_TOOLBAR)));
   if (il && bmp) ImageList_AddMasked(il, bmp, RGB(255, 0, 255));
-  if (bmp) DeleteObject(bmp);
+  gdi_delete(bmp);
   if (il) SendMessageA(tb, TB_SETIMAGELIST, 0, (LPARAM)il);
   memset(b, 0, sizeof(b));
   for (i = 0; i < TB_COUNT; i++) {

@@ -10,6 +10,7 @@
 #include "ui.h"
 #include "views.h"
 #include "render.h"
+#include "render_int.h"
 #include "fifworker.h"
 #include "fifworker_int.h"
 #include "estr.h"
@@ -241,8 +242,8 @@ static LRESULT CALLBACK bar_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
       u32 cfgc = g_app.cfg.ui[UIC_ISEARCH_FAIL];
       COLORREF c = cfgc == COLOR_SYSDEFAULT ? render_ui(UIC_ISEARCH_FAIL) : (COLORREF)cfgc;
       if (!g_fail_brush || c != g_fail_rgb) {
-        if (g_fail_brush) DeleteObject(g_fail_brush);
-        g_fail_brush = CreateSolidBrush(c);
+        gdi_delete(g_fail_brush);
+        g_fail_brush = (HBRUSH)gdi_track(CreateSolidBrush(c));
         g_fail_rgb = c;
       }
       SetBkColor((HDC)wp, c);
@@ -251,7 +252,7 @@ static LRESULT CALLBACK bar_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
     }
     break;
   case WM_DESTROY:
-    if (g_fail_brush) { DeleteObject(g_fail_brush); g_fail_brush = 0; }
+    if (g_fail_brush) { gdi_delete(g_fail_brush); g_fail_brush = 0; }
     g_bar = 0;
     break;
   default:
