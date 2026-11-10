@@ -51,9 +51,9 @@ Milestones for the user: after Wave 2 a usable editor; after Wave 3 the full 1.0
 ## Release 1.0 (2026-11-10; local only, not published)
 | File | Size | MD5 |
 |---|---|---|
-| `release/pica-1.0.zip` (portable: `Pica\pica.exe` + `README.TXT`) | 400,849 | cae69f56684f34b16f1e181aed43f8f3 |
-| `release/pica-1.0-setup.exe` (installer, embeds the same pica.exe) | 937,984 | 957fd5e3ed1fc7bd585e09c9de22e8fd |
-| `release/Pica-1.0/pica.exe` | 786,432 | 38255064164cc1e786070f4ec41b599a |
+| `release/pica-1.0.zip` (portable: `Pica\pica.exe` + `README.TXT`) | 401,470 | 55d7917ef5712c78fa2c255b005494af |
+| `release/pica-1.0-setup.exe` (installer, embeds the same pica.exe) | 937,984 | 52d9914ba68595f0dc004844b897b41f |
+| `release/Pica-1.0/pica.exe` | 786,432 | 83ebe8ac67063b27dfcc207dc7e275c1 |
 
 Build: `w98 build editor release`, `w98 build 'editor\setup' clean`, `w98 build 'editor\setup'`, `tools/mkzip.sh`.
 Checks on VM A: clean rebuild 0 warnings; coretest 189,835 checks (Mac 189,780) 0 failed; selftest from the
@@ -66,4 +66,5 @@ Known limits / open (details in docs/HANDOFF.md T16-T19):
 - Not tested: real T40/X41 beyond the user's quick look, High Contrast, Fixedsys/Lucida visual pass, DBCS input on
   a real East Asian Win98.
 - Minor: tab-id counter never wraps (needs >1M tabs); config_store can't report out-of-memory.
-- Decisions for the user: publish (GitHub repo + release)? licence (Retro Strike uses MIT)? product name "Pica" ok?
+- Published 2026-11-10 (user approved): MIT licence (LICENSE, also in README.TXT), public repo HenriVSL/pica-editor,
+  GitHub release v1.0 with the zip and setup.exe.

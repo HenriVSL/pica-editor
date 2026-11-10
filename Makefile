@@ -356,7 +356,8 @@ obj\tm_adversarial.obj: tests\t_main.cpp tests\tf.h src\core\*.h
 # "Pica Help.md" next to it, and none of that may ship. Zip + setup copy: tools/mkzip.sh on the Mac.
 VER = 1.0
 REL = release\Pica-$(VER)
-release:
+# FORCE: the release\ folder exists after the first run, so nmake would call the target up to date
+release: FORCE
 	$(MAKE) /nologo clean
 	$(MAKE) /nologo all
 	@if not exist release\nul mkdir release
@@ -365,6 +366,8 @@ release:
 	copy $(APP).exe $(REL)\$(APP).exe
 	copy README.TXT $(REL)\README.TXT
 	dir $(REL)
+
+FORCE:
 
 clean:
 	-del obj\*.obj

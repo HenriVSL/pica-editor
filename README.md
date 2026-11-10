@@ -18,7 +18,9 @@ system colours, menus with accelerators and VC6-style keys.
 | ![Setup's file types page](docs/screenshots/setup_types.png) | ![Explorer's right-click menu on a .txt file](docs/screenshots/open_with.png) |
 | Setup: pick the file types that open in Pica | "Open with Pica" on every file; .txt keeps its name and Print |
 
-**Download:** `pica-1.0-setup.exe` (installer) or `pica-1.0.zip` (portable), version 1.0.
+**Download:** [`pica-1.0-setup.exe`](https://github.com/HenriVSL/pica-editor/releases/download/v1.0/pica-1.0-setup.exe) (installer) or
+[`pica-1.0.zip`](https://github.com/HenriVSL/pica-editor/releases/download/v1.0/pica-1.0.zip) (portable), version 1.0, from the
+[releases page](https://github.com/HenriVSL/pica-editor/releases).
 
 ## Features
 
@@ -217,3 +219,7 @@ generated from Python's `unicodedata` and `codecs` modules by scripts in `tools/
 "Pica" is the typewriter pitch of 10 characters per inch, the classic monospace size.
 
 Designed and directed by Henri Lavikainen; developed with Claude (Anthropic) coding agents, 2026.
+
+## License
+
+MIT License, Copyright (c) 2026 Henri Lavikainen. See [LICENSE](LICENSE).
