@@ -351,14 +351,20 @@ $(SU_ADVERSARIAL) obj\tm_adversarial.obj obj\t_adversarial.obj $(TLIBS)
 obj\tm_adversarial.obj: tests\t_main.cpp tests\tf.h src\core\*.h
 	cl $(TCFLAGS) /DTF_SUITE=adversarial /c /Foobj\tm_adversarial.obj tests\t_main.cpp
 
-# ---- release (T18 completes it)
+# ---- release (T18): clean rebuild, then release\Pica-1.0 holds exactly pica.exe + README.TXT.
+# The old folder is deleted first: running the exe from there writes pica.ini, session*.ini, backup\ and
+# "Pica Help.md" next to it, and none of that may ship. Zip + setup copy: tools/mkzip.sh on the Mac.
+VER = 1.0
+REL = release\Pica-$(VER)
 release:
 	$(MAKE) /nologo clean
 	$(MAKE) /nologo all
-	-mkdir release
-	-mkdir release\Pica-1.0
-	copy $(APP).exe release\Pica-1.0\$(APP).exe
-	-copy README.TXT release\Pica-1.0\README.TXT
+	@if not exist release\nul mkdir release
+	@if exist $(REL)\nul deltree /y $(REL) > nul
+	mkdir $(REL)
+	copy $(APP).exe $(REL)\$(APP).exe
+	copy README.TXT $(REL)\README.TXT
+	dir $(REL)
 
 clean:
 	-del obj\*.obj

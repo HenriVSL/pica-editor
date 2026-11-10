@@ -2383,3 +2383,117 @@ bar + hex view), t17_exit_prompt (Unsaved Changes dialog). Visual review: nothin
 - `-bench` "open 100 MB on demand: full index" is OVER (18 s vs 3 s): disk-bound in the VM (raw ReadFile of the file
   6 MB/s, 16 s), not core CPU (file_index's counting is the same memchr loop).
 - Brace matching / Find All over > 64 K-char lines and the other T03/T06 open issues are unchanged.
+
+## T18 Release (wave 4b, agent 86box-d1-T18, 2026-11-10)
+### Built
+- `README.md` (GitHub-style): what Pica is, 5 screenshots, features, requirements, install (Setup with its options,
+  file types, upgrade/repair/downgrade behaviour, uninstall, silent switches + exit codes; portable zip), where
+  settings/session/backups live, command line (+ dev switches), known limits (DESIGN 1.2/1.4/14 + HANDOFF open issues),
+  building with VC6, testing on the Mac, docs index, "all our own code" credits. Tone follows the Retro Strike README.
+- `README.TXT` (ASCII, CRLF, <= 75 columns): the same for users, bundled in the zip and in setup.exe.
+- `docs/screenshots/`: `editor.png` (t17_text_c), `hexview.png` (t17_hex), `find_in_files.png` (t17_fif_results),
+  `setup_types.png` (t19_types), `open_with.png` (t19_txt_menu_print). Cropped from the shot86 captures (the 86Box
+  window is scaled ~1.24x, not 2x: the screen rectangle is found from the black letterbox and scaled back to 800x600
+  with LANCZOS).
+- `Makefile` release target (and the same in `tools/gen_make.py`, which generates it; regenerating changes nothing
+  else): `nmake release` = clean + all, then **deltree /y `release\Pica-1.0`**, mkdir, copy `pica.exe` + `README.TXT`
+  (no `-` prefix any more: a missing README is an error), `dir`. Running the exe from the release folder writes
+  pica.ini/session*.ini/backup\/"Pica Help.md" there; the deltree makes sure none of it survives a rebuild.
+- `tools/mkzip.sh` (Mac): version from `res/appinfo.h`; checks README.TXT (= root copy, ASCII, CRLF); zips an
+  explicit list into `release/pica-1.0.zip` with the folder `Pica\` inside (unzip to C:\ = C:\PICA); notes extra files
+  in the release folder (never zipped); copies `setup/setup.exe` to `release/pica-1.0-setup.exe` only if it embeds
+  byte-exactly this pica.exe and README.TXT (RCDATA = raw bytes, so a substring check proves the payload); prints
+  sizes + MD5.
+- `src/help/help.md` final review: settings folder text now names both `C:\PICA` (zip) and `C:\Program Files\Pica`
+  (Setup); command line section says `-n/-hex/-ro` apply to the next file (example). Headings unchanged.
+- Deleted the runtime `pica.ini`, `session1.ini`, `session2.ini` from the project root.
+
+### Release contents (`release/`)
+| File | Size | MD5 |
+|---|---|---|
+| `Pica-1.0/pica.exe` | 786,432 | 38255064164cc1e786070f4ec41b599a |
+| `Pica-1.0/README.TXT` | 8,974 | 0943692629e59ad49dcd9bd67ec71d65 |
+| `pica-1.0.zip` (Pica/pica.exe, Pica/README.TXT) | 400,849 | cae69f56684f34b16f1e181aed43f8f3 |
+| `pica-1.0-setup.exe` (pica.exe + uninst.exe 69,632 + README.TXT) | 937,984 | bd7f2f806d38609eca8802e7898f4128 |
+
+Release order: `w98 build editor release` -> `w98 build 'editor\setup' clean` -> `w98 build 'editor\setup'` ->
+`tools/mkzip.sh`. (`setup clean` also deletes `obj\shtest.exe`: `w98 build 'editor\setup' shtest` rebuilds it.)
+
+### Tests (VM A, lock 86box-d1-T18)
+- `w98 build editor release`: clean rebuild, 65 sources, **0 warnings**, 2 min; release folder = exactly 2 files.
+- coretest (`nmake test` built it; agent98's build timeout (10 min) killed the run inside nmake, so it was rerun with
+  `w98 run coretest.exe ... -t 900`): **189,835 checks, 0 failed** (10.8 min this time; T16 saw 2.7 min). Mac
+  `make -C tests`: 189,780 checks, 0 failed; lint 180 files, 0 findings.
+- `release\Pica-1.0\pica.exe -selftest -cfg C:\PICATEST`: **13 passed, 0 failed (0 skipped)** (st_scenarios 525).
+  The release folder still held only pica.exe + README.TXT afterwards.
+- setup: `clean` + build, **0 warnings**, README.TXT embedded (`/dHAVE_README`), no LICENSE.TXT (none exists).
+- Portable: the zip unpacked on the Mac and copied to `C:\PICA`; `C:\PICA\pica.exe` started, session1/2.ini appeared
+  next to the exe at once, F1 opened "Pica Help.md - Pica [Read-only]" (`docs/shots/t18_release.png`, read), close ->
+  pica.ini written next to the exe. `C:\PICA` deleted.
+- Installer: HKCR + Uninstall exports before; `pica-1.0-setup.exe /S /LOG=` rc 0: pica.exe, uninst.exe, README.TXT,
+  `Programs\Pica.lnk`, the 10 default types as `Pica.<ext>` (txt/ini/c/cpp/h keep print / "Open with MSDev"),
+  `*\shell\Pica`, HKLM\Software\Pica. Installed pica.exe and README.TXT **MD5-identical** to the release files; version
+  resource 1.0.0.0. ShellExecuteEx default verb: a.txt -> "a.txt - Pica", b.c -> "b.c - Pica"; verb `Pica` on y.inf
+  (inffile, not ours) and a.txt -> opened in Pica. Explorer right-click on x.dat (no file type) shows **Open with
+  Pica** (bold) and clicking it opened x.dat in Pica, hex view + binary bar (`docs/shots/t18_open_with_menu.png`,
+  `t18_open_with_dat.png`). `setup.exe /UNINSTALL /S /PURGE` rc 0: folder (incl. pica.ini, session*.ini), link, keys
+  gone; associations back (.txt=txtfile, .c=cfile, .ini=inifile, .log/.md none); **HKCR and Uninstall exports
+  byte-identical to the pre-install exports**; no WININIT.INI, no PICA* in TEMP, no Application Data\Pica.
+- VM left clean: no Pica/setup/shtest processes, Explorer window closed, C:\T18 and C:\PICA deleted, desktop empty,
+  lock released. (C:\PICATEST is the shared test folder of earlier tasks; left as it was.)
+
+### Gotchas
+- `w98 sh 'time /t'` is interactive on Win98 ("Enter new time"); agent98 killed it, but don't.
+- ShellExecuteEx with verb `Pica` on a file of an unregistered type (x.dat) fails with 1155 (no association): Win98's
+  ShellExecute doesn't use `*\shell` verbs for such files; Explorer's menu does (tested by click). Test the verb on a
+  registered type, or click.
+- `w98 build editor test` after a clean build exceeds agent98's 10-minute limit (compile ~4 min + run); run
+  `coretest.exe` separately with `w98 run -t 900`.
+
+### Requests for files I don't own
+- **setup/inst.cpp (T19 / overseer), found by reading, not run on the VM:** Pica writes `Pica Help.md` into its
+  settings folder (= the install folder after Setup) whenever Help is opened, but `g_cfg_files` doesn't list it, so
+  after `/PURGE` (or "Yes, delete settings") the folder stays with that one file and "the folder goes if it is empty"
+  doesn't happen. Fix: add `"Pica Help.md"` to the purge list without making `settings_exist` count it (e.g. a separate
+  array deleted in `purge_settings`, or put it before `~pica.tst` and use `NCFG - 2` there). It arguably belongs to the
+  program files (it is regenerated from the exe), so a plain uninstall could delete it too. After the fix: rebuild
+  setup (`clean` first) and rerun `tools/mkzip.sh` (the setup MD5 changes; pica.exe doesn't).
+- `.gitignore` (overseer): add `/Pica Help.md` next to the other runtime files; decide whether `release/*.zip` and
+  `release/*.exe` are committed (`*.exe` is ignored already, the zip isn't).
+- No LICENSE file exists (Retro Strike uses MIT); setup.exe would bundle `LICENSE.TXT` automatically if added. Ask the
+  user.
+
+### Open issues
+- Not tested on real hardware by me (the user ran an earlier build on the ThinkPad T40). Win95/ME/2000/XP untested;
+  README says so.
+- About shows the VM's `__DATE__`; the VM clock matched the Mac during this build (3:50 PM both).
+
+### Proposed STATUS.md text
+Phase 3 table, Wave 4 row: `T16 core QA, T17 win QA + bench, T19 installer, T18 release | done`. New section:
+
+```
+## Release 1.0 (T18, 2026-11-10; not published yet)
+- `release/pica-1.0.zip` (portable: Pica\pica.exe + README.TXT, 401 KB) and `release/pica-1.0-setup.exe`
+  (installer, 938 KB, embeds the same pica.exe: MD5 38255064...). Built by `w98 build editor release`,
+  `w98 build 'editor\setup' clean` + build, `tools/mkzip.sh`.
+- README.md (GitHub, screenshots in docs/screenshots/) and README.TXT (shipped).
+- Final checks on VM A: clean rebuild 0 warnings; coretest 189,835 checks 0 failed; selftest from the release exe
+  13/13; portable run from C:\PICA (settings next to the exe, Help opens); silent install -> .txt/.c via
+  association, "Open with Pica" from Explorer -> silent uninstall /PURGE: registry byte-identical to before.
+- Open: publish (GitHub repo + release) is the user's decision; license not chosen; setup purge leaves
+  "Pica Help.md" (one-line fix in setup/inst.cpp, see HANDOFF T18).
+```
+### Addendum 2 (T18 finding): regenerated files on uninstall
+- `setup/inst.cpp`: `Pica Help.md` (written to the settings folder when Help opens) and `~pica.tst` are now a separate
+  list `g_gen_files` that **every** uninstall deletes (install dir, `Application Data\Pica`, `<windows>\Pica`; the
+  latter two folders go if empty). `settings_exist` counts only pica.ini, session1/2.ini and `backup\`, so a plain
+  uninstall with no real settings removes the folder. `docs/INSTALLER.md` updated.
+- Rebuilt `w98 build 'editor\setup' clean` + `w98 build 'editor\setup'` (zero warnings, README.TXT embedded), then
+  `tools/mkzip.sh`: `release/pica-1.0-setup.exe` 937,984 bytes, MD5 `957fd5e3ed1fc7bd585e09c9de22e8fd` (embeds
+  release pica.exe MD5 38255064164cc1e786070f4ec41b599a and README.TXT).
+- VM A (no WINOA386 leftovers, no reboot needed), all with the release setup: install /S -> pica.exe, F1 -> "Pica
+  Help.md - Pica [Read-only]", file in the install dir; `uninst.exe /S` -> Help.md deleted, pica.ini + session1/2.ini
+  kept, folder kept. Reinstall + `/S /PURGE` -> folder deleted. Install, F1, close, `/S /PURGE` -> all files incl.
+  Help.md deleted, folder deleted. Install + only `Pica Help.md` + `uninst.exe /S` (no purge) -> folder deleted. HKCR
+  export identical to the pre-install export except the 2 boot-time "Implementing" values; Uninstall key export
+  byte-identical; `HKLM\Software\Pica` absent. VM left clean (C:\T19, WININIT.INI, PICAUN.EXE removed).

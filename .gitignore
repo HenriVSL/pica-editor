@@ -19,3 +19,5 @@ probe/*.TXT
 /session2.ini
 /T*.BAK
 /backup/
+/Pica Help.md
+release/*.zip

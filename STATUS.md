@@ -37,13 +37,33 @@ Key choices: piece tree over the file's bytes (one document, text + hex views, o
 thread with temp + rename; backups in generation files and the session in two alternating files (no renames in the
 crash path); polling for changes (Mac-side edits on M: never notify); new files ANSI + CRLF without BOM.
 
-## Phase 3: build (in progress, overnight 2026-11-09/10; user asked for autonomous completion)
+## Phase 3: build (done 2026-11-10)
 | Wave | Tasks | State |
 |---|---|---|
 | 0 | T00 skeleton: headers, stubs, Makefiles (VC6 + Mac), resources, test harness, app shell | done (commit a2c2572) |
 | 1 | T01 buffer, T02 codecs, T03 regex + search, T04 lexers, T05 file I/O, T06 layout/hex format/ini/session (core, Mac-tested) | done (112,926 checks Mac + VC6) |
 | 2 | T07 frame, T08 text view, T09 files + document commands, T10 hex view, T11 search UI + find in files, T12 edit commands + dialogs | done (selftest 9/9, 0 warnings) |
 | 3 | T13 session/backup/recovery, T14 disk events + large files, T15 selftest suite + shortcuts + help, I1 integration of Wave 2 requests | done (selftest 13/13) |
-| 4 | T16 core QA, T17 win QA + performance, then T18 release (README, zip) | T16 core QA, T17 win QA, T19 installer done; T18 release running |
+| 4 | T16 core QA, T17 win QA + performance, then T18 release (README, zip) | done: T16 core QA, T17 win QA + bench, T19 installer, T18 release |
 
 Milestones for the user: after Wave 2 a usable editor; after Wave 3 the full 1.0; after Wave 4 the release zip.
+
+## Release 1.0 (2026-11-10; local only, not published)
+| File | Size | MD5 |
+|---|---|---|
+| `release/pica-1.0.zip` (portable: `Pica\pica.exe` + `README.TXT`) | 400,849 | cae69f56684f34b16f1e181aed43f8f3 |
+| `release/pica-1.0-setup.exe` (installer, embeds the same pica.exe) | 937,984 | 957fd5e3ed1fc7bd585e09c9de22e8fd |
+| `release/Pica-1.0/pica.exe` | 786,432 | 38255064164cc1e786070f4ec41b599a |
+
+Build: `w98 build editor release`, `w98 build 'editor\setup' clean`, `w98 build 'editor\setup'`, `tools/mkzip.sh`.
+Checks on VM A: clean rebuild 0 warnings; coretest 189,835 checks (Mac 189,780) 0 failed; selftest from the
+release exe 13/13; portable run from C:\PICA; silent install -> associations + "Open with Pica" -> uninstall
+(plain and /PURGE): registry identical to before. README.md (screenshots in docs/screenshots/) + README.TXT.
+
+Known limits / open (details in docs/HANDOFF.md T16-T19):
+- 100 MB on-demand full index is disk-bound on the VM (~18 s; first screen 28 ms). 
+- Extreme colouring (~70 colour runs per row) repaints in 30 ms; undo of a 10,000-match Replace All ~1.1 s, no progress.
+- Not tested: real T40/X41 beyond the user's quick look, High Contrast, Fixedsys/Lucida visual pass, DBCS input on
+  a real East Asian Win98.
+- Minor: tab-id counter never wraps (needs >1M tabs); config_store can't report out-of-memory.
+- Decisions for the user: publish (GitHub repo + release)? licence (Retro Strike uses MIT)? product name "Pica" ok?

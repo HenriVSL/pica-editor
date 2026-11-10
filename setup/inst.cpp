@@ -952,8 +952,12 @@ void notify_shell()
 
 // ---- settings (DESIGN 13.1: next to the exe if writable, else Application Data\Pica, else <windows>\Pica) ----
 
-static const char* const g_cfg_files[] = { APP_INI, "session1.ini", "session2.ini", "~pica.tst" };
+static const char* const g_cfg_files[] = { APP_INI, "session1.ini", "session2.ini" };   // the user's settings
 enum { NCFG = sizeof(g_cfg_files) / sizeof(g_cfg_files[0]) };
+// files Pica regenerates in its settings folder (the help tab's text, the writability probe): not settings, so
+// every uninstall deletes them and they never keep the folder alive
+static const char* const g_gen_files[] = { APP_NAME " Help.md", "~pica.tst" };
+enum { NGEN = sizeof(g_gen_files) / sizeof(g_gen_files[0]) };
 
 static int cfg_dirs(const char* dir, char out[3][MAX_PATH])
 {
@@ -971,7 +975,7 @@ int settings_exist(const char* dir)
   char d[3][MAX_PATH], p[MAX_PATH];
   int n = cfg_dirs(dir, d), i, j;
   for (i = 0; i < n; i++) {
-    for (j = 0; j < NCFG - 1; j++) {
+    for (j = 0; j < NCFG; j++) {
       p_join(d[i], g_cfg_files[j], p, sizeof(p));
       if (p_exists(p)) return 1;
     }
@@ -988,6 +992,19 @@ static void delete_file(const char* path, int* reboot)
   if (DeleteFileA(path)) { slog("deleted %s", path); return; }
   slog("in use: %s (deleted when Windows restarts)", path);
   if (wininit_delete_later(path)) *reboot = 1;
+}
+
+static void delete_generated(const char* dir, int* reboot)
+{
+  char d[3][MAX_PATH], p[MAX_PATH];
+  int n = cfg_dirs(dir, d), i, j;
+  for (i = 0; i < n; i++) {
+    for (j = 0; j < NGEN; j++) {
+      p_join(d[i], g_gen_files[j], p, sizeof(p));
+      delete_file(p, reboot);
+    }
+    if (i > 0 && p_is_dir(d[i]) && RemoveDirectoryA(d[i])) slog("deleted empty folder %s", d[i]);
+  }
 }
 
 static void purge_settings(const char* dir, int* reboot)
@@ -1239,6 +1256,7 @@ int uninst_run(const char* dir, int purge, int defer_self, int* kept_folder)
     p_join(dir, g_pay[i].tmp, path, sizeof(path));
     delete_file(path, &reboot);
   }
+  delete_generated(dir, &reboot);
   if (purge) purge_settings(dir, &reboot);
   wininit_flush();
   if (!defer_self) uninst_finish(dir);

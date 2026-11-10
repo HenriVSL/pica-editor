@@ -38,7 +38,8 @@ they exist at build time, `README.TXT` and `LICENSE.TXT`. No MSI, no third-party
   associations (only those that still point at Pica), removes Pica's keys, shortcuts and program files. Kept settings
   keep the folder; with "Yes" (or `/PURGE`) `pica.ini`, `session1/2.ini`, `backup\*` are deleted too, also from
   `Application Data\Pica` and `<windows>\Pica`, and the folder goes if it is empty (`langs\` and files the user
-  created are never deleted). The installed `uninst.exe` copies itself to `%TEMP%\PICAUN.EXE`, runs that copy and
+  created are never deleted). Files Pica regenerates (`Pica Help.md`, written when Help is opened, and `~pica.tst`)
+  are not settings: every uninstall deletes them, so they never keep the folder alive. The installed `uninst.exe` copies itself to `%TEMP%\PICAUN.EXE`, runs that copy and
   waits for it; the copy deletes `uninst.exe` once the original has exited and schedules its own deletion with
   `WININIT.INI` (`NUL=...PICAUN.EXE`).
 - **Log**: every run writes `%TEMP%\PICASET.LOG` (or `/LOG=<file>`): each file, registry change and decision.

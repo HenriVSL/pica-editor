@@ -246,8 +246,9 @@ was and Pica tells you what was kept. Tick "Keep a .bak copy when saving" (Tools
 
 **Where things live** (the settings folder):
 
-- The folder of `pica.exe`, if Pica can write there (recommended install:
-  `C:\PICA\pica.exe`).
+- The folder of `pica.exe`, if Pica can write there (`C:\PICA` for the
+  portable zip, `C:\Program Files\Pica` after Setup: Windows 98 lets Pica
+  write to both).
 - Otherwise `C:\WINDOWS\Application Data\Pica`.
 - The `-cfg <folder>` command line option picks another folder.
 
@@ -306,6 +307,9 @@ pica.exe [-n<line>] [-hex] [-ro] [-multi] [-nosession] [-cfg <folder>] [files...
 | `-multi`        | Start another Pica (normally files go to the running one) |
 | `-nosession`    | Don't restore or save the session                         |
 | `-cfg <folder>` | Use another settings folder                               |
+
+`-n`, `-hex` and `-ro` apply to the file that follows them, for example
+`pica.exe -n50 main.c -hex data.bin`.
 
 
 ## Tips
