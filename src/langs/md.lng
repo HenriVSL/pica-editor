@@ -1,1 +1,9 @@
-; md.lng - Markdown language definition (placeholder from T00; T04 writes it)
+; md.lng - Markdown (CommonMark / GitHub style), hand-written lexer. Also colours Pica's help. Format: see cpp.lng.
+[language]
+id=md
+name=Markdown
+lexer=markdown
+extensions=md;markdown;mdown;mkd;mkdn;mdwn;mdtxt;mdtext;ronn
+case=1
+braces=()[]
+comment_block=<!-- -->

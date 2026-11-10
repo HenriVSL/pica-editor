@@ -29,8 +29,15 @@ public:
   u32  seq() const;               // id of the current state (changes on every group, undo, redo)
   void set_save_point_seq(u32 s); // mark a past state as saved (async save completes later)
   u32  memory_bytes() const;
+  // T01 additions
+  int  reserve(u32 nops, u32 nrefs);  // makes the next group start + nops ops with nrefs refs infallible
+  bool in_group() const;              // between begin() and end()
 private:                          // private state: T01 may change freely
-  u32 seq_; u32 save_seq_;
+  struct Group { u32 op_first, nops, ref_first, nrefs; UndoSel before, after; u32 kind, time, id; };
+  Vec<Group> groups_; Vec<UndoOp> ops_; Vec<PieceRef> refs_;
+  u32 cur_; u32 seq_; u32 save_seq_; u32 base_id_; u32 next_id_;
+  int open_, started_, pend_merge_, no_merge_; u32 pend_kind_, pend_time_; UndoSel pend_before_;
+  int start_();  void fill_(const Group& g, UndoStep* out) const;
   UndoLog(const UndoLog&); UndoLog& operator=(const UndoLog&);
 };
 

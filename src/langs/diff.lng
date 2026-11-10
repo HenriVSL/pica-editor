@@ -1,1 +1,23 @@
-; diff.lng - Diff language definition (placeholder from T00; T04 writes it)
+; diff.lng - unified, context and normal diffs / patches. Whole-line rules, first match wins. Format: see cpp.lng.
+[language]
+id=diff
+name=Diff
+extensions=diff;patch;dif;rej;debdiff
+case=1
+braces=
+number=none
+line=diff\s diff_header
+line=Index: diff_header
+line===== diff_header
+line=+++ diff_header
+line=--- diff_header
+line=*** diff_header
+line=Only\sin diff_header
+line=Binary\s diff_header
+line=@@ diff_hunk
+line=+ diff_add
+line=> diff_add
+line=- diff_del
+line=< diff_del
+line=! diff_hunk
+line=\ comment

@@ -1,1 +1,10 @@
-; xml.lng - XML language definition (placeholder from T00; T04 writes it)
+; xml.lng - XML and XML-based formats, hand-written lexer (case-sensitive names, CDATA, <?xml ?>, <!DOCTYPE>).
+; Format: see cpp.lng.
+[language]
+id=xml
+name=XML
+lexer=xml
+extensions=xml;xsl;xslt;xsd;dtd;svg;manifest;rss;atom;rdf;plist;wsdl;xaml;xul;vcproj;csproj;vbproj;props;targets;resx;config;nuspec;kml;gpx;opml;xlf
+case=1
+braces=<>
+comment_block=<!-- -->

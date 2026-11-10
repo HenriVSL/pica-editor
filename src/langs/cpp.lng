@@ -1,1 +1,145 @@
-; cpp.lng - C/C++ language definition (placeholder from T00; T04 writes it)
+; cpp.lng - C / C++ (VC6 era plus later standards) for Pica.
+;
+; ==== The .lng format (Pica 1.0) ====================================================================================
+; Built-in language files are embedded in pica.exe; a file with the same name in the "langs" folder of the settings
+; directory replaces the built-in one, and new file names add languages (max 40). A file with an error is skipped
+; and the error is shown; the built-in definition stays.
+;
+; Plain ASCII, one "key=value" per line. Lines starting with ; or # are comments. An optional [language] header is
+; allowed. Unknown keys are errors. Values are split into tokens at spaces; inside a token \s means a space,
+; \t a tab and \\ a backslash. Keys marked (+) may repeat: their values are added up.
+;
+; Identity and editing
+;   id=cpp                      language id, 1-15 chars [a-z0-9_-] (default: the file name without .lng)
+;   name=C/C++                  shown in menus and the status bar (required, max 31 chars)
+;   lexer=generic               generic | html | xml | markdown (html/xml/markdown use hand-written lexers;
+;                               their files give only the keys of this section plus keywords1/2 and script/style)
+;   extensions=c;cpp (+)        file extensions, ';' or space separated, case-insensitive
+;   names=makefile;makefile.* (+)  whole file names, DOS wildcards allowed; checked before extensions
+;   case=1                      1: keywords and tokens are case-sensitive; 0: ASCII case-insensitive
+;   tab_width=0                 0 = the global option, else 1-16
+;   use_tabs=2                  0 spaces, 1 tabs, 2 the global option
+;   braces=()[]{}               up to 3 pairs for brace matching (default ()[]{} for generic languages)
+;   comment=//                  token Toggle Comment (Ctrl+Q) inserts (default: the first line_comment)
+;   comment_block=/* */         block pair for Ctrl+Q when there is no line comment (default: first block_comment)
+;
+; Generic lexer rules
+;   line_comment=// [start]     up to 4; "start" = only as the first non-blank token of a line (INI ';', BAT '::')
+;   comment_continuation=1      a line comment ending in '\' continues on the next line (C)
+;   comment_word=rem            up to 4 words that comment out the rest of the line when they are the first word
+;                               (an '@' before the word is allowed)
+;   block_comment=/* */         up to 2 pairs; nested=1 lets them nest (depth up to 15)
+;   string=OPEN CLOSE [ESC|none] [char] [multiline]
+;                               up to 4 kinds, longest opener wins. ESC is one character (escape at the end of a
+;                               line continues the string); "char" styles as CHAR; "multiline" lets the string span
+;                               lines (Python """, JS `template`). A string without a close ends at the line end.
+;   string_prefixes=L u U u8 (+) identifiers directly before a string that belong to it (Python r b f, C++ L)
+;   preprocessor=#              a line whose first non-blank char is this is PREPROC (strings and comments inside
+;                               keep their styles); '\' at the end continues it
+;   decorator=@                 at line start: @name.name is PREPROC (Python)
+;   number=c                    c (also asm: 0FFh, 1010b) | basic (&HFF) | pascal ($FF) | none
+;   ident_start=A-Za-z_         identifier characters (ranges a-z, single chars); non-ASCII letters always count
+;   ident_part=A-Za-z0-9_
+;   operators=+-*/              characters styled OPERATOR
+;   keywords1= .. keywords4= (+)  word lists: 1 statements, 2 types, 3 library/extra, 4 user (styles KEYWORD1-4)
+;   regex=1                     JavaScript /regex/flags literals (STRING) where an operand may start
+;   variables=make|bat|percent  $(VAR) $@ (make); %VAR% %1 %~dp0 %%i (bat); %NAME% (percent, INF files)
+;   label=colon_prefix          :label lines (BAT) | colon_suffix: name: at line start | asm: name: or a
+;                               non-keyword word in column 0
+;   ini_section=1               [section] at line start (SECTION)
+;   ini_key=1                   text before the first '=' (KEY)
+;   make_rules=1                column 0: NAME = value (VARIABLE) and target: (LABEL); tab-indented recipes plain
+;   line=PREFIX STYLE (up to 16) a line starting (column 0) with PREFIX is styled STYLE as a whole (first match);
+;                               styles: default comment string char number keyword1-4 preproc operator label
+;                               variable section key tag attr entity heading emph code diff_add diff_del
+;                               diff_hunk diff_header invalid
+;   script=js / style=css       (lexer=html) languages used inside <script> and <style>
+; =====================================================================================================================
+
+[language]
+id=cpp
+name=C/C++
+extensions=c;cpp;cc;cxx;c++;cp;h;hpp;hh;hxx;h++;inl;ipp;tlh;tli;idl;odl
+case=1
+braces=()[]{}
+comment=//
+comment_block=/* */
+line_comment=//
+comment_continuation=1
+block_comment=/* */
+string=" " \
+string=' ' \ char
+string_prefixes=L u U u8
+preprocessor=#
+number=c
+ident_start=A-Za-z_$
+ident_part=A-Za-z0-9_$
+operators=+-*/%=<>!&|^~?:;,.()[]{}
+
+; statements and other keywords (C89/C99/C11, C++98 through C++20, VC6 / Microsoft extensions)
+keywords1=asm auto break case catch class const const_cast continue default delete do dynamic_cast else enum
+keywords1=explicit export extern false for friend goto if inline mutable namespace new operator private protected
+keywords1=public register reinterpret_cast return sizeof static static_cast struct switch template this throw true
+keywords1=try typedef typeid typename union using virtual volatile while
+keywords1=and and_eq bitand bitor compl not not_eq or or_eq xor xor_eq
+keywords1=alignas alignof constexpr consteval constinit decltype noexcept nullptr static_assert thread_local
+keywords1=override final concept requires co_await co_return co_yield import module
+keywords1=restrict _Alignas _Alignof _Atomic _Generic _Noreturn _Static_assert _Thread_local _Pragma
+keywords1=__asm _asm __based _based __cdecl _cdecl __declspec _declspec __except __fastcall _fastcall __finally
+keywords1=__forceinline __inline _inline __leave __stdcall _stdcall __try __uuidof __thiscall __multiple_inheritance
+keywords1=__single_inheritance __virtual_inheritance __unaligned __w64 __ptr32 __ptr64 __noop __assume __alignof
+keywords1=__event __hook __unhook __raise __interface __super __if_exists __if_not_exists __sptr __uptr __pragma
+keywords1=__restrict __vectorcall __clrcall __identifier __typeof__ __typeof typeof __attribute__ __extension__
+keywords1=__asm__ __volatile__ __inline__ __restrict__ __func__ __FUNCTION__ __FILE__ __LINE__ __DATE__ __TIME__
+keywords1=__TIMESTAMP__ __COUNTER__ __cplusplus __STDC__ __STDC_VERSION__ _MSC_VER _WIN32 _WIN64 _DEBUG NDEBUG
+
+; types (built-in and standard library typedefs)
+keywords2=bool char double float int long short signed unsigned void wchar_t char8_t char16_t char32_t
+keywords2=__int8 __int16 __int32 __int64 _int8 _int16 _int32 _int64 __wchar_t _Bool _Complex _Imaginary
+keywords2=size_t ssize_t ptrdiff_t intptr_t uintptr_t intmax_t uintmax_t int8_t int16_t int32_t int64_t uint8_t
+keywords2=uint16_t uint32_t uint64_t int_least8_t int_least16_t int_least32_t int_least64_t uint_least8_t
+keywords2=uint_least16_t uint_least32_t uint_least64_t int_fast8_t int_fast16_t int_fast32_t int_fast64_t
+keywords2=uint_fast8_t uint_fast16_t uint_fast32_t uint_fast64_t FILE fpos_t va_list time_t clock_t tm div_t
+keywords2=ldiv_t lldiv_t jmp_buf sig_atomic_t wint_t wctype_t mbstate_t errno_t off_t max_align_t nullptr_t
+keywords2=std string wstring vector list map multimap set multiset deque queue priority_queue stack pair
+keywords2=iterator const_iterator auto_ptr unique_ptr shared_ptr weak_ptr
+
+; Win32 / VC6 / COM / DirectX / multimedia names and the CRT memory macros
+keywords3=BOOL BOOLEAN BYTE WORD DWORD QWORD UINT INT LONG ULONG SHORT USHORT CHAR UCHAR WCHAR TCHAR TBYTE FLOAT
+keywords3=DOUBLE VOID PVOID LPVOID LPCVOID HANDLE PHANDLE LPHANDLE INT8 INT16 INT32 INT64 UINT8 UINT16 UINT32
+keywords3=UINT64 LONG32 LONG64 ULONG32 ULONG64 DWORD32 DWORD64 DWORDLONG LONGLONG ULONGLONG INT_PTR UINT_PTR
+keywords3=LONG_PTR ULONG_PTR DWORD_PTR SIZE_T SSIZE_T WPARAM LPARAM LRESULT HRESULT ATOM COLORREF LCID LANGID
+keywords3=LPSTR LPCSTR LPWSTR LPCWSTR LPTSTR LPCTSTR PSTR PCSTR PWSTR PCWSTR PTSTR PCTSTR LPBYTE PBYTE LPWORD
+keywords3=PWORD LPDWORD PDWORD LPINT PINT LPLONG PLONG LPBOOL PBOOL PUINT PULONG PSHORT PUSHORT PCHAR PUCHAR
+keywords3=HWND HDC HINSTANCE HMODULE HMENU HICON HCURSOR HBRUSH HPEN HFONT HBITMAP HRGN HPALETTE HGDIOBJ HGLOBAL
+keywords3=HLOCAL HKEY PHKEY HACCEL HRSRC HFILE HDROP HGLRC HMETAFILE HENHMETAFILE HHOOK HIMAGELIST HTREEITEM
+keywords3=HDWP HMONITOR HTHEME HKL HCONV HDDEDATA HSZ HWINSTA HDESK HTASK HWAVEOUT HWAVEIN HMIDIOUT HMIDIIN HMMIO
+keywords3=RECT LPRECT PRECT LPCRECT RECTL POINT LPPOINT PPOINT POINTL POINTS SIZE LPSIZE PSIZE SIZEL MSG LPMSG PMSG
+keywords3=WNDCLASS WNDCLASSA WNDCLASSW WNDCLASSEX WNDCLASSEXA WNDCLASSEXW WNDPROC DLGPROC TIMERPROC HOOKPROC
+keywords3=FARPROC NEARPROC PROC PAINTSTRUCT LPPAINTSTRUCT CREATESTRUCT LPCREATESTRUCT MINMAXINFO WINDOWPLACEMENT
+keywords3=WINDOWPOS LPWINDOWPOS NMHDR LPNMHDR LOGFONT LOGFONTA LOGFONTW TEXTMETRIC TEXTMETRICA TEXTMETRICW LOGBRUSH
+keywords3=LOGPEN BITMAP BITMAPINFO BITMAPINFOHEADER BITMAPFILEHEADER RGBQUAD PALETTEENTRY LOGPALETTE OPENFILENAME
+keywords3=OPENFILENAMEA CHOOSECOLOR CHOOSEFONT BROWSEINFO SHFILEINFO SCROLLINFO MENUITEMINFO TOOLINFO TCITEM LVITEM
+keywords3=LVCOLUMN TVITEM TVINSERTSTRUCT INITCOMMONCONTROLSEX PROPSHEETPAGE PROPSHEETHEADER ACCEL COPYDATASTRUCT
+keywords3=FILETIME SYSTEMTIME LPSYSTEMTIME LARGE_INTEGER ULARGE_INTEGER PLARGE_INTEGER OVERLAPPED LPOVERLAPPED
+keywords3=SECURITY_ATTRIBUTES LPSECURITY_ATTRIBUTES CRITICAL_SECTION LPCRITICAL_SECTION WIN32_FIND_DATA
+keywords3=WIN32_FIND_DATAA WIN32_FIND_DATAW BY_HANDLE_FILE_INFORMATION MEMORYSTATUS SYSTEM_INFO OSVERSIONINFO
+keywords3=OSVERSIONINFOA STARTUPINFO STARTUPINFOA PROCESS_INFORMATION LPTHREAD_START_ROUTINE MSGBOXPARAMS
+keywords3=CALLBACK WINAPI WINAPIV APIENTRY APIPRIVATE PASCAL WINUSERAPI WINBASEAPI WINGDIAPI STDMETHODCALLTYPE
+keywords3=STDAPI STDMETHOD STDMETHODIMP STDMETHOD_ STDMETHODIMP_ FAR NEAR far near CONST IN OUT OPTIONAL TRUE
+keywords3=FALSE NULL INVALID_HANDLE_VALUE MAX_PATH GUID LPGUID REFGUID IID REFIID CLSID REFCLSID LPCLSID
+keywords3=IUnknown LPUNKNOWN IDispatch BSTR VARIANT VARIANTARG OLECHAR LPOLESTR LPCOLESTR SAFEARRAY DISPID
+keywords3=DECLARE_INTERFACE DECLARE_INTERFACE_ THIS THIS_ PURE interface
+keywords3=LPDIRECTDRAW LPDIRECTDRAW2 LPDIRECTDRAW4 LPDIRECTDRAW7 IDirectDraw IDirectDraw7 LPDIRECTDRAWSURFACE
+keywords3=LPDIRECTDRAWSURFACE2 LPDIRECTDRAWSURFACE3 LPDIRECTDRAWSURFACE4 LPDIRECTDRAWSURFACE7 IDirectDrawSurface
+keywords3=IDirectDrawSurface7 LPDIRECTDRAWCLIPPER LPDIRECTDRAWPALETTE DDSURFACEDESC DDSURFACEDESC2 LPDDSURFACEDESC
+keywords3=LPDDSURFACEDESC2 DDSCAPS DDSCAPS2 DDBLTFX DDPIXELFORMAT DDCOLORKEY DDCAPS LPDIRECTSOUND LPDIRECTSOUND8
+keywords3=LPDIRECTSOUNDBUFFER LPDIRECTSOUNDBUFFER8 IDirectSound IDirectSoundBuffer DSBUFFERDESC DSCAPS DSBCAPS
+keywords3=LPDIRECTINPUT LPDIRECTINPUT8 LPDIRECTINPUTDEVICE LPDIRECTINPUTDEVICE8 DIDEVICEOBJECTDATA DIMOUSESTATE
+keywords3=DIJOYSTATE DIJOYSTATE2 LPDIRECT3D LPDIRECT3DDEVICE LPDIRECT3D7 LPDIRECT3DDEVICE7 D3DVECTOR D3DMATRIX
+keywords3=D3DVIEWPORT7 D3DCOLOR D3DVALUE D3DTLVERTEX D3DLVERTEX D3DVERTEX WAVEFORMATEX LPWAVEFORMATEX PCMWAVEFORMAT
+keywords3=WAVEHDR LPWAVEHDR WAVEOUTCAPS MMRESULT MMTIME MCIERROR MCIDEVICEID HMIXER
+keywords3=SUCCEEDED FAILED MAKEINTRESOURCE MAKEINTRESOURCEA MAKELONG MAKEWORD MAKELPARAM MAKEWPARAM MAKELRESULT
+keywords3=LOWORD HIWORD LOBYTE HIBYTE RGB GetRValue GetGValue GetBValue ZeroMemory CopyMemory MoveMemory FillMemory
+keywords3=GET_X_LPARAM GET_Y_LPARAM UNREFERENCED_PARAMETER TEXT _T __T ARRAYSIZE countof _countof
+keywords3=assert offsetof min max errno EOF stdin stdout stderr

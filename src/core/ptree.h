@@ -19,6 +19,12 @@ public:
   int  append(const u8* p, epos n, PieceVec* refs);   // splits at chunk ends and PT_PIECE_MAX; nbreaks left 0
   const u8* chunk(u16 src) const;                     // src >= 1
   u32  bytes_used() const;
+  // T01 additions
+  int  append_aligned(const u8* p, epos n, u32 align, PieceVec* refs);   // align 2: start on an even chunk offset
+  void clear();                                       // frees every chunk (tree cleared, no undo refs left)
+  void swap(AddBuffer& o);
+  u32  chunk_count() const;
+  u32  chunk_fill(u16 src) const;                     // bytes written into chunk src (src >= 1)
 private:                          // private state: T01 may change freely
   u8** chunks_; u32 nchunks_; u32 used_last_; u32 total_;
   AddBuffer(const AddBuffer&); AddBuffer& operator=(const AddBuffer&);
@@ -49,8 +55,29 @@ public:
   u32  piece_count() const;
   int  check(char* why, u32 cap);                                // invariants (order, heap, sums, caps); 0 = ok
   void dump(EStr* out);
+  // T01 additions
+  int  reserve_nodes(u32 n);                                     // make n node allocations infallible
+  int  count_refs(PieceRef* refs, u32 n);                        // set nbreaks + spec tag for the current spec
+  void swap(PieceTree& o);                                       // exchange whole trees (incl. add buffers)
+  u32  stamp() const;                                            // changes on every mutation and original->get()
 private:                          // private state: T01 may change freely
+  struct Node { u32 l, r, prio; u32 start, len, nb; u32 slen, snb; u16 src, flags; };
+  Vec<Node> pool_; u32 root_; u32 free_head_; u32 free_n_; u32 rng_; u32 npieces_; u32 stamp_;
   ByteSource* orig_; BreakSpec bs_; AddBuffer add_;
+  u32  slen_(u32 t) const;  u32 snb_(u32 t) const;  void upd_(u32 t);
+  u32  new_node_(const PieceRef& r);  void free_node_(u32 t);  u32 free_tree_(u32 t);
+  void split_(u32 t, epos pos, u32* a, u32* b);  u32 merge_(u32 a, u32 b);
+  const u8* src_ptr_(u16 src, u32 start, u32 maxlen, epos* avail);
+  int  count_(u16 src, u32 start, u32 len, u32* out);
+  int  find_(u16 src, u32 start, u32 len, u32 k, u32* rel);
+  int  ensure_boundary_(epos pos);  void shrink_(u32 t, epos pos, u32 k, u32 c);
+  int  insert_list_(epos pos, const PieceRef* refs, u32 n, int coalesce);
+  int  remove_raw_(epos pos, epos n, PieceVec* removed);
+  int  rebuild_(ProgressCb* cb);  int recount_(u32 t, ProgressCb* cb, epos* done);
+  int  init_blocks_(ByteSource* original, const BreakSpec& bs, ProgressCb* cb, int counted);
+  void collect_(u32 t, PieceVec* out) const;  u32 count_nodes_(u32 t) const;
+  int  check_(u32 t, u32 maxprio, u32* nodes, u32* len, u32* nb, epos base, char* why, u32 cap, int recount);
+  u16  tag_() const;  int aligned_(epos pos, epos n, int last_odd_ok) const;
   PieceTree(const PieceTree&); PieceTree& operator=(const PieceTree&);
 };
 
@@ -60,7 +87,7 @@ public:
   int  init(const PieceVec& pieces, const AddBuffer* add, ByteSource* original_private);  // copies the list
   epos size() const;  const u8* get(epos off, epos* avail);  int err() const;
 private:                          // private state: T01 may change freely
-  PieceVec pieces_; const AddBuffer* add_; ByteSource* orig_; epos size_; int err_;
+  PieceVec pieces_; Vec<epos> offs_; const AddBuffer* add_; ByteSource* orig_; epos size_; int err_; u32 last_;
   SnapshotSource(const SnapshotSource&); SnapshotSource& operator=(const SnapshotSource&);
 };
 

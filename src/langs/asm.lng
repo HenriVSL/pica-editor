@@ -1,1 +1,76 @@
-; asm.lng - Assembly language definition (placeholder from T00; T04 writes it)
+; asm.lng - x86 assembly, MASM style (also TASM / NASM directives). Format: see cpp.lng.
+; Instructions 8086 - Pentium II with x87, MMX, 3DNow! and SSE; labels (name: or a non-keyword word in column 0);
+; NASM %define lines are PREPROC; numbers 0FFh, 1010b, 0x1F; keywords are case-insensitive.
+[language]
+id=asm
+name=Assembly
+extensions=asm;inc;s;nasm;a86;mac
+case=0
+braces=()[]
+comment=;
+line_comment=;
+string=" " none
+string=' ' none
+preprocessor=%
+label=asm
+number=c
+ident_start=A-Za-z_@$?.
+ident_part=A-Za-z0-9_@$?.
+operators=+-*/=<>!&|^~:,()[]{}
+
+; instructions: 8086/186/286/386/486, Pentium, Pentium Pro / II
+keywords1=aaa aad aam aas adc add and arpl bound bsf bsr bswap bt btc btr bts call cbw cdq clc cld cli clts cmc
+keywords1=cmova cmovae cmovb cmovbe cmovc cmove cmovg cmovge cmovl cmovle cmovna cmovnae cmovnb cmovnbe cmovnc
+keywords1=cmovne cmovng cmovnge cmovnl cmovnle cmovno cmovnp cmovns cmovnz cmovo cmovp cmovpe cmovpo cmovs cmovz
+keywords1=cmp cmps cmpsb cmpsw cmpsd cmpxchg cmpxchg8b cpuid cwd cwde daa das dec div enter hlt idiv imul in inc
+keywords1=ins insb insw insd int int3 into invd invlpg iret iretd iretw ja jae jb jbe jc jcxz jecxz je jg jge jl
+keywords1=jle jmp jna jnae jnb jnbe jnc jne jng jnge jnl jnle jno jnp jns jnz jo jp jpe jpo js jz lahf lar lds
+keywords1=lea leave les lfs lgdt lgs lidt lldt lmsw lock lods lodsb lodsw lodsd loop loope loopne loopnz loopz
+keywords1=loopd looped loopned loopw lsl lss ltr mov movs movsb movsw movsd movsx movzx mul neg nop not or out
+keywords1=outs outsb outsw outsd pop popa popad popaw popf popfd popfw push pusha pushad pushaw pushf pushfd
+keywords1=pushfw rcl rcr rdmsr rdpmc rdtsc rep repe repne repnz repz ret retf retn rol ror rsm sahf sal sar sbb
+keywords1=scas scasb scasw scasd seta setae setb setbe setc sete setg setge setl setle setna setnae setnb setnbe
+keywords1=setnc setne setng setnge setnl setnle setno setnp setns setnz seto setp setpe setpo sets setz sgdt shl
+keywords1=shld shr shrd sidt sldt smsw stc std sti stos stosb stosw stosd str sub sysenter sysexit test ud2 verr
+keywords1=verw wait wbinvd wrmsr xadd xchg xlat xlatb xor
+; x87 FPU
+keywords1=f2xm1 fabs fadd faddp fbld fbstp fchs fclex fcmovb fcmovbe fcmove fcmovnb fcmovnbe fcmovne fcmovnu fcmovu
+keywords1=fcom fcomi fcomip fcomp fcompp fcos fdecstp fdisi fdiv fdivp fdivr fdivrp feni ffree fiadd ficom ficomp
+keywords1=fidiv fidivr fild fimul fincstp finit fist fistp fisub fisubr fld fld1 fldcw fldenv fldl2e fldl2t fldlg2
+keywords1=fldln2 fldpi fldz fmul fmulp fnclex fndisi fneni fninit fnop fnsave fnstcw fnstenv fnstsw fpatan fprem
+keywords1=fprem1 fptan frndint frstor fsave fscale fsetpm fsin fsincos fsqrt fst fstcw fstenv fstp fstsw fsub
+keywords1=fsubp fsubr fsubrp ftst fucom fucomi fucomip fucomp fucompp fwait fxam fxch fxrstor fxsave fxtract fyl2x
+keywords1=fyl2xp1
+; MMX, 3DNow!, SSE
+keywords1=emms movd movq packssdw packsswb packuswb paddb paddd paddsb paddsw paddusb paddusw paddw pand pandn
+keywords1=pcmpeqb pcmpeqd pcmpeqw pcmpgtb pcmpgtd pcmpgtw pmaddwd pmulhw pmullw por pslld psllq psllw psrad psraw
+keywords1=psrld psrlq psrlw psubb psubd psubsb psubsw psubusb psubusw psubw punpckhbw punpckhdq punpckhwd
+keywords1=punpcklbw punpckldq punpcklwd pxor femms pavgusb pf2id pfacc pfadd pfcmpeq pfcmpge pfcmpgt pfmax pfmin
+keywords1=pfmul pfrcp pfrcpit1 pfrcpit2 pfrsqit1 pfrsqrt pfsub pfsubr pi2fd pmulhrw prefetch prefetchw
+keywords1=addps addss andnps andps cmpps cmpss comiss cvtpi2ps cvtps2pi cvtsi2ss cvtss2si cvttps2pi cvttss2si
+keywords1=divps divss ldmxcsr maxps maxss minps minss movaps movhlps movhps movlhps movlps movmskps movss movups
+keywords1=mulps mulss orps rcpps rcpss rsqrtps rsqrtss shufps sqrtps sqrtss stmxcsr subps subss ucomiss
+keywords1=unpckhps unpcklps xorps pavgb pavgw pextrw pinsrw pmaxsw pmaxub pminsw pminub pmovmskb pmulhuw psadbw
+keywords1=pshufw maskmovq movntq movntps prefetchnta prefetcht0 prefetcht1 prefetcht2 sfence
+
+; registers
+keywords2=al ah ax eax bl bh bx ebx cl ch cx ecx dl dh dx edx si esi di edi sp esp bp ebp ip eip cs ds es fs gs ss
+keywords2=cr0 cr2 cr3 cr4 dr0 dr1 dr2 dr3 dr6 dr7 tr3 tr4 tr5 tr6 tr7 st st0 st1 st2 st3 st4 st5 st6 st7
+keywords2=mm0 mm1 mm2 mm3 mm4 mm5 mm6 mm7 xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7 flags eflags
+keywords2=rax rbx rcx rdx rsi rdi rsp rbp r8 r9 r10 r11 r12 r13 r14 r15 sil dil spl bpl
+
+; directives and operators (MASM / TASM / NASM)
+keywords3=.186 .286 .286c .286p .287 .386 .386c .386p .387 .486 .486p .586 .586p .686 .686p .8086 .8087 .mmx .xmm
+keywords3=.k3d .model .code .data .data? .const .stack .fardata .fardata? .startup .exit .radix .list .nolist
+keywords3=.listall .listif .listmacro .listmacroall .nocref .cref .xlist .xall .lall .sall .if .else .elseif
+keywords3=.endif .while .endw .repeat .until .untilcxz .break .continue .err .errb .errdef .errdif .erre .errnb
+keywords3=.errndef .errnz .seq .alpha .dosseg .tfcond .lfcond .sfcond
+keywords3=db dw dd df dp dq dt byte sbyte word sword dword sdword fword qword tbyte real4 real8 real10 oword
+keywords3=resb resw resd resq rest times equ org align even assume segment ends proc endp macro endm local
+keywords3=public extern extrn externdef global proto invoke uses label struc struct union record typedef
+keywords3=include includelib option end name title subtitle page comment echo purge if ife ifb ifnb ifdef
+keywords3=ifndef ifdif ifidn else elseif elseife endif for forc irp irpc repeat rept while exitm goto textequ
+keywords3=catstr substr instr sizestr ptr offset seg short near far near16 near32 far16 far32 type length
+keywords3=lengthof size sizeof this low high lowword highword mask width eq ne lt le gt ge mod shl shr dup
+keywords3=flat small tiny medium compact large huge stdcall pascal basic fortran syscall section bits use16
+keywords3=use32 cpu default rel abs strict incbin istruc iend at common

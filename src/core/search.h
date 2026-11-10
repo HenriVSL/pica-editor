@@ -23,7 +23,12 @@ public:
   int  impossible() const;            // pattern can't occur in this encoding (find returns 0)
   const SearchOpts& opts() const;
 private:                               // private state: T03 may change freely
-  SearchOpts opts_; EncSpec enc_; RxProg* prog_; int impossible_;
+  SearchOpts opts_; EncSpec enc_; RxProg* prog_; int impossible_; int compiled_;
+  RxMatcher mt_;
+  EBytes hex_; EBytes hexmask_;            // SM_HEX pattern bytes and bit masks (0xFF = whole byte must match)
+  int find_fwd_(ByteSource* s, const Codec* c, epos lo, epos from, epos hi, epos ctx, RxMatch* m, ProgressCb* cb);
+  int find_back_(ByteSource* s, const Codec* c, epos lo, epos hi, epos from, RxMatch* m, ProgressCb* cb);
+  int find_hex_(ByteSource* s, epos from, epos hi, RxMatch* m, ProgressCb* cb);
   Searcher(const Searcher&); Searcher& operator=(const Searcher&);
 };
 class EditSink { public: virtual ~EditSink() {} virtual int apply(epos pos, epos del, const u8* ins, epos n) = 0; };

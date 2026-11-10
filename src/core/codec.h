@@ -61,6 +61,7 @@ public:
   epos pos() const;
 private:                                         // private state: T02 may change freely
   ByteSource* s_; const Codec* c_; epos pos_; epos end_;
+  epos buf_pos_; u32 buf_len_; u8 buf_[256];     // bytes [buf_pos_, buf_pos_ + buf_len_) copied with read()
 };
 
 #endif

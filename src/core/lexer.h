@@ -50,7 +50,8 @@ public:
   Highlighter();  ~Highlighter();
   int  attach(LineProvider* lines, const LangInfo* lang);  void detach();
   void set_enabled(bool on);  bool enabled() const;
-  void lines_changed(u32 first, u32 removed, u32 added);   // after every edit
+  void lines_changed(u32 first, u32 removed, u32 added);   // after every edit: first = line containing the edit start,
+                                                           // removed/added = line breaks removed/inserted
   void lines_reset();
   void set_target(u32 line);           // idle work lexes at least to here
   int  work(u32 budget_lines);         // returns 1 while more work remains
@@ -58,8 +59,24 @@ public:
   int  style_line(u32 line, const ecp* s, u32 n, u8* styles);   // 1 styled; 0 start state unknown (styles = default)
   int  take_dirty(u32* first, u32* last);   // lines whose styling changed (to repaint); 0 if none
   u32  valid_upto() const;
+  // T04 additions: tests and diagnostics
+  int  debug_state(u32 line, u16* state) const;   // stored start state (flags stripped); 1 if known, 0 if not
+  u32  debug_lexed() const;                       // lines lexed through the LineProvider so far (work + catch-up)
 private:                               // private state: T04 may change freely
   LineProvider* lines_; const LangInfo* lang_; bool enabled_; u32 valid_upto_;
+  u16* gb_; u32 gcap_, gs_, gl_;       // gap buffer of start states (bit 15 = line changed since next state computed)
+  u32 n_, target_, lexed_, probed_;
+  u32 dfirst_, dlast_, ufirst_, ulast_;
+  bool dirty_, unk_, broken_;
+  ecp* buf_;
+  bool active_() const;
+  u16  gget_(u32 i) const;  void gset_(u32 i, u16 v);
+  void gmove_(u32 at);  int greserve_(u32 extra);
+  int  gresize_(u32 n);
+  void mark_dirty_(u32 a, u32 b);
+  void advance_(u32 to_valid);
+  u32  lex_step_(int probe);
+  int  catch_up_(u32 line, u32 limit);
   Highlighter(const Highlighter&); Highlighter& operator=(const Highlighter&);
 };
 

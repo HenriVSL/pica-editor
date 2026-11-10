@@ -63,8 +63,28 @@ public:
   void find_close(FsFind* f);
   int  is_remote(const char* path);
 private:                                // private state: T05 may change freely
-  FileSys* inner_; u32 calls_[F_KINDS]; u32 fail_nth_[F_KINDS]; int fail_err_[F_KINDS];
+  enum { FX_KINDS = 15 };
+  FileSys* inner_; u32 calls_[FX_KINDS]; u32 fail_nth_[FX_KINDS]; int fail_err_[FX_KINDS]; u8 fail_sticky_[FX_KINDS];
+  u32 total_; u32 crash_after_; int torn_; int fake_space_on_; u64 fake_space_; int lock_deny_write_; u32 short_nth_; int late_;
+  char locked_[260];
   int hit_(int kind);
+  int is_locked_(const char* path) const;
+public:                                 // T05 additions (tests only)
+  // Extra fault kinds for fail_on/fail_from/calls (the F_* kinds above keep their values).
+  enum { F_STAT = F_KINDS, F_ATTRS, F_CTIME, F_SPACE, F_FIND, F_MKDIR, F_ALL_KINDS };
+  void fail_from(int kind, u32 nth, int err);   // the nth and every later call of that kind fail with err
+  void crash_after(u32 n);                      // simulated power loss: every call after the first n (all kinds,
+                                                // counted from reset) fails with E_IO; 0xFFFFFFFF = off (default)
+  u32  total_calls() const;                     // calls of any kind since reset (to size crash_after loops)
+  void set_torn_writes(int on);                 // an injected write failure first writes the first half of the buffer;
+                                                // an injected copy failure first writes half the source onto 'to'
+  void short_write_on(u32 nth);                 // the nth write writes only half its bytes and reports E_OK (a lying
+                                                // redirector); 0 = off
+  void set_fail_late(int on);                   // injected move/remove/copy failures happen AFTER the operation was
+                                                // done (an SMB redirector reporting an error for a completed call)
+  void set_free_space(int on, u64 bytes);       // free_space() reports 'bytes' instead of asking the inner FileSys
+  void set_locked(const char* path, int deny_write);   // another program holds 'path' open: move/remove of it ->
+                                                // E_SHARING; deny_write also fails open-for-write/copy onto it; NULL = off
 };
 
 #endif

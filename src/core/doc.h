@@ -78,10 +78,31 @@ public:
   PieceTree* tree();
   u32  change_seq() const;                 // increments on every content change
 private:                                   // private state: T01 may change freely
+  class View : public ByteSource {         // bytes(): live view with a one-span cache
+  public:
+    View();
+    epos size() const;  const u8* get(epos off, epos* avail);
+    Document* d_; const u8* p_; epos pos_; epos len_; u32 stamp_; int valid_;
+  };
+  friend class View;
   PieceTree tree_; UndoLog undo_; ByteSource* src_; EncSpec enc_; const Codec* codec_; epos origin_;
   EolStyle eol_; EolCounts eolc_; u8 eolb_[4]; u32 eolb_n_;
   bool ro_, busy_, indexing_, always_mod_; u32 change_seq_;
   Vec<DocListener*> listeners_;
+  bool ondemand_, cr_mode_; u32 depth_; u32 dispatching_; bool lst_dirty_; View view_;
+  const Codec* cc_() const;  u32 unit_() const;  void set_enc_(const EncSpec& e, bool cr_mode, EolStyle eol);
+  int  reset_(ByteSource* src, const EncSpec& enc, epos bom_len, EolStyle eol, ProgressCb* cb, int indexing, int fire);
+  static int count_eol_(ByteSource* s, epos a, epos b, u32 unit, int be, EolCounts* c, ProgressCb* cb);
+  void recount_eol_();
+  int  check_edit_(epos pos, epos del, epos ins_len);
+  int  prim_(epos pos, epos del, PieceVec* removed, const u8* ins, epos ins_len, const PieceRef* refs, u32 nrefs,
+             PieceVec* added, u32 flags, int record);
+  int  state_(u32 enc_packed, u32 eol_packed, u32 flags);
+  int  apply_op_(const UndoOp& op, const PieceRef* refs, int forward, u32 flags);
+  int  apply_step_(const UndoStep& st, int forward, u32 flags);
+  void emit_(const EditEvent& e);
+  int  edit_record_(epos pos, epos del, const u8* ins, epos ins_len);
+  int  build_text_(EBytes* out, const Codec* to, int lossy_subst, ConvertReport* rep, ProgressCb* cb);
   Document(const Document&); Document& operator=(const Document&);
 };
 

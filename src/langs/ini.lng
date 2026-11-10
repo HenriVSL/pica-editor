@@ -1,1 +1,25 @@
-; ini.lng - INI language definition (placeholder from T00; T04 writes it)
+; ini.lng - INI-style configuration: .ini, .inf (setup), .reg (REGEDIT4), .cfg (86box.cfg), .dsw (VC6
+; workspaces), .url. [section] SECTION, key= KEY, ; and # comments at line start, %strings% (INF). Format: see cpp.lng.
+[language]
+id=ini
+name=INI
+extensions=ini;inf;reg;cfg;dsw;url;conf;properties;desktop;cnf;oem
+names=msdos.sys;config.sys;config.nt
+case=0
+braces=[]()
+comment=;
+line_comment=; start
+line_comment=# start
+string=" " \
+ini_section=1
+ini_key=1
+variables=percent
+number=c
+ident_start=A-Za-z_
+ident_part=A-Za-z0-9_
+operators==,:
+
+keywords1=true false yes no on off enabled disabled none auto
+keywords2=REGEDIT4 dword hex
+keywords3=HKEY_LOCAL_MACHINE HKEY_CURRENT_USER HKEY_CLASSES_ROOT HKEY_USERS HKEY_CURRENT_CONFIG HKEY_DYN_DATA
+keywords3=HKLM HKCU HKCR HKU HKCC

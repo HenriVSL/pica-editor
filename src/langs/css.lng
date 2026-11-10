@@ -1,1 +1,72 @@
-; css.lng - CSS language definition (placeholder from T00; T04 writes it)
+; css.lng - Cascading Style Sheets (CSS1/2.1 plus common CSS3). Also used inside HTML <style>.
+; keywords1 properties, keywords2 values and colour names, keywords3 at-rules, pseudo-classes and HTML elements.
+; Format: see cpp.lng.
+[language]
+id=css
+name=CSS
+extensions=css;scss;less
+case=0
+braces={}()[]
+comment_block=/* */
+block_comment=/* */
+string=" " \
+string=' ' \
+number=c
+ident_start=A-Za-z_@-
+ident_part=A-Za-z0-9_-
+operators={}:;,.>+~*=()[]!#%/
+
+; properties
+keywords1=azimuth background background-attachment background-clip background-color background-image
+keywords1=background-origin background-position background-repeat background-size border border-bottom
+keywords1=border-bottom-color border-bottom-left-radius border-bottom-right-radius border-bottom-style
+keywords1=border-bottom-width border-collapse border-color border-image border-left border-left-color
+keywords1=border-left-style border-left-width border-radius border-right border-right-color border-right-style
+keywords1=border-right-width border-spacing border-style border-top border-top-color border-top-left-radius
+keywords1=border-top-right-radius border-top-style border-top-width border-width bottom box-shadow box-sizing
+keywords1=caption-side clear clip color content counter-increment counter-reset cue cue-after cue-before cursor
+keywords1=direction display elevation empty-cells float font font-family font-size font-size-adjust
+keywords1=font-stretch font-style font-variant font-weight height left letter-spacing line-height list-style
+keywords1=list-style-image list-style-position list-style-type margin margin-bottom margin-left margin-right
+keywords1=margin-top marker-offset marks max-height max-width min-height min-width opacity orphans outline
+keywords1=outline-color outline-offset outline-style outline-width overflow overflow-x overflow-y padding
+keywords1=padding-bottom padding-left padding-right padding-top page page-break-after page-break-before
+keywords1=page-break-inside pause pause-after pause-before pitch pitch-range play-during position quotes
+keywords1=resize richness right size speak speak-header speak-numeral speak-punctuation speech-rate stress
+keywords1=table-layout text-align text-decoration text-indent text-overflow text-shadow text-transform top
+keywords1=transform transform-origin transition transition-delay transition-duration transition-property
+keywords1=transition-timing-function animation animation-delay animation-direction animation-duration
+keywords1=animation-fill-mode animation-iteration-count animation-name animation-play-state
+keywords1=animation-timing-function unicode-bidi vertical-align visibility voice-family volume white-space
+keywords1=widows width word-break word-spacing word-wrap z-index zoom filter flex flex-basis flex-direction
+keywords1=flex-flow flex-grow flex-shrink flex-wrap align-content align-items align-self justify-content order
+keywords1=grid grid-area grid-column grid-row grid-template grid-template-areas grid-template-columns
+keywords1=grid-template-rows gap column-gap row-gap columns column-count column-width src unicode-range
+keywords1=scrollbar-base-color scrollbar-face-color scrollbar-arrow-color scrollbar-track-color
+; values
+keywords2=absolute always armenian auto avoid baseline below bidi-override blink block bold bolder both bottom
+keywords2=capitalize caption center circle cjk-ideographic close-quote collapse compact condensed crosshair
+keywords2=dashed decimal decimal-leading-zero default disc dotted double e-resize embed expanded extra-condensed
+keywords2=extra-expanded fixed georgian groove help hidden hide hiragana hiragana-iroha icon inherit initial
+keywords2=inline inline-block inline-table inset inside invert italic justify katakana katakana-iroha landscape
+keywords2=large larger left lighter line-through list-item lower-alpha lower-greek lower-latin lower-roman
+keywords2=lowercase ltr marker medium menu message-box middle move n-resize narrower ne-resize no-close-quote
+keywords2=no-open-quote no-repeat none normal nowrap nw-resize oblique open-quote outset outside overline
+keywords2=pointer portrait pre pre-line pre-wrap relative repeat repeat-x repeat-y ridge right rtl run-in
+keywords2=s-resize scroll se-resize semi-condensed semi-expanded separate show small small-caps small-caption
+keywords2=smaller solid square static status-bar sticky sub super sw-resize table table-caption table-cell
+keywords2=table-column table-column-group table-footer-group table-header-group table-row table-row-group text
+keywords2=text-bottom text-top thick thin top transparent ultra-condensed ultra-expanded underline unset
+keywords2=upper-alpha upper-latin upper-roman uppercase visible w-resize wait wider x-large x-small xx-large
+keywords2=xx-small flex inline-flex grid space-between space-around stretch wrap ease ease-in ease-out
+keywords2=ease-in-out linear cover contain border-box content-box serif sans-serif monospace cursive fantasy
+keywords2=aqua black blue fuchsia gray grey green lime maroon navy olive orange purple red silver teal white
+keywords2=yellow currentColor rgb rgba hsl hsla url attr counter calc var rect important
+; at-rules, pseudo-classes / elements and HTML element names used in selectors
+keywords3=@import @media @charset @font-face @page @keyframes @supports @namespace @-webkit-keyframes
+keywords3=hover active link visited focus first-child last-child first-letter first-line before after lang
+keywords3=nth-child nth-of-type not checked disabled enabled first-of-type last-of-type only-child root target
+keywords3=selection placeholder
+keywords3=a abbr address article aside b blockquote body br button caption code col dd div dl dt em fieldset
+keywords3=footer form h1 h2 h3 h4 h5 h6 header hr html i iframe img input label legend li nav ol optgroup option p
+keywords3=pre section select small span strong sub sup tbody td textarea tfoot th thead tr tt u ul

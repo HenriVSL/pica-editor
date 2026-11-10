@@ -1,1 +1,43 @@
-; js.lng - JavaScript language definition (placeholder from T00; T04 writes it)
+; js.lng - JavaScript / JScript (ES3 era plus common ES5-ES2020 words). Also used inside HTML <script>.
+; /regex/ literals where an operand may start; `template strings` span lines. Format: see cpp.lng.
+[language]
+id=js
+name=JavaScript
+extensions=js;jse;mjs;cjs;jscript;json;es;jsm
+case=1
+braces=()[]{}
+comment=//
+line_comment=//
+block_comment=/* */
+string=` ` \ multiline
+string=" " \
+string=' ' \
+regex=1
+number=c
+ident_start=A-Za-z_$
+ident_part=A-Za-z0-9_$
+operators=+-*/%=<>!&|^~?:;,.()[]{}
+
+; statements and reserved words
+keywords1=break case catch continue debugger default delete do else finally for function if in instanceof new
+keywords1=return switch throw try typeof var void while with class const enum export extends import let static
+keywords1=yield async await of implements interface package private protected public
+; literals, this/super and the built-in objects
+keywords2=true false null undefined NaN Infinity this super arguments
+keywords2=Array ArrayBuffer Boolean DataView Date Error EvalError Float32Array Float64Array Function Int8Array
+keywords2=Int16Array Int32Array JSON Map Math Number Object Promise Proxy RangeError ReferenceError Reflect RegExp
+keywords2=Set String Symbol SyntaxError TypeError URIError Uint8Array Uint8ClampedArray Uint16Array Uint32Array
+keywords2=WeakMap WeakSet BigInt Intl globalThis Enumerator VBArray ActiveXObject GetObject ScriptEngine
+; browser / host objects and common functions
+keywords3=window document navigator location history screen frames parent top self opener event console alert
+keywords3=confirm prompt setTimeout setInterval clearTimeout clearInterval requestAnimationFrame parseInt
+keywords3=parseFloat isNaN isFinite escape unescape encodeURI encodeURIComponent decodeURI decodeURIComponent
+keywords3=eval XMLHttpRequest Image Option Audio localStorage sessionStorage fetch WScript prototype constructor
+keywords3=length getElementById getElementsByTagName getElementsByName getElementsByClassName querySelector
+keywords3=querySelectorAll createElement createTextNode appendChild removeChild insertBefore replaceChild
+keywords3=setAttribute getAttribute removeAttribute addEventListener removeEventListener attachEvent
+keywords3=detachEvent innerHTML innerText outerHTML textContent style className onclick onload onmouseover
+keywords3=onmouseout onchange onsubmit onkeydown onkeyup onkeypress write writeln all forms images links
+keywords3=toString valueOf hasOwnProperty call apply bind push pop shift unshift slice splice concat join
+keywords3=indexOf lastIndexOf charAt charCodeAt fromCharCode substring substr split replace match search
+keywords3=toLowerCase toUpperCase

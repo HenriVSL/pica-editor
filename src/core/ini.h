@@ -6,6 +6,7 @@
 #include "emem.h"
 #include "estr.h"
 
+struct IniLine { char* raw; char* name; char* val; u8 kind; u8 pad[3]; };   // private to ini.cpp (T06)
 class Ini {                            // own reader/writer; tolerant; keeps order, comments and unknown lines
 public:
   Ini();  ~Ini();
@@ -22,7 +23,15 @@ public:
   u32  key_count(const char* sec) const;  const char* key_at(const char* sec, u32 i, const char** val) const;
   int  write(EStr* out) const;                          // CRLF
 private:                               // private state: T06 may change freely
-  Vec<char*> lines_;
+  Vec<IniLine> lines_;                 // every line in order (raw text + parsed name/value)
+  Vec<u32> secs_;                      // indices of the section header lines
+  void clear_();
+  int  reindex_();
+  int  range_(u32 h, u32* first, u32* end) const;   // h = index into secs_, or secs_.size() for the global part
+  int  find_(const char* sec, const char* key) const;
+  int  put_line_(u32 at, int replace, const char* raw, u32 rlen, u8 kind, const char* name, u32 nlen,
+                 const char* val, u32 vlen);
+  void erase_line_(u32 i);
   Ini(const Ini&); Ini& operator=(const Ini&);
 };
 

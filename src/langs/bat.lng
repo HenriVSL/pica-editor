@@ -1,1 +1,29 @@
-; bat.lng - Batch language definition (placeholder from T00; T04 writes it)
+; bat.lng - DOS / Windows batch files (COMMAND.COM on Win98, plus CMD.EXE words). Format: see cpp.lng.
+; REM and :: comments, :labels, %VAR% / %1 / %~dp0 / %%i variables; keywords are case-insensitive.
+[language]
+id=bat
+name=Batch
+extensions=bat;cmd;btm;nt
+case=0
+braces=()
+comment=REM\s
+line_comment=:: start
+comment_word=rem
+label=colon_prefix
+variables=bat
+number=c
+ident_start=A-Za-z_
+ident_part=A-Za-z0-9_
+operators=@<>|&()=!
+
+; statements and flow
+keywords1=if else goto call exit for in do not exist errorlevel defined set shift setlocal endlocal pushd popd
+keywords1=echo pause cls choice start title color prompt path cmdextversion equ neq lss leq gtr geq nul con prn
+keywords1=aux lpt1 lpt2 lpt3 com1 com2 com3 com4 on off
+; internal and common external commands (DOS 6 / Win98 / NT)
+keywords2=cd chdir md mkdir rd rmdir del erase deltree copy xcopy xcopy32 move ren rename type dir attrib
+keywords2=date time ver vol label format fdisk sys chkdsk scandisk defrag mem more find findstr sort fc comp
+keywords2=edit edlin debug doskey subst mode keyb chcp loadhigh lh devicehigh smartdrv mscdex himem emm386
+keywords2=command cmd win regedit rundll rundll32 net ping ipconfig winipcfg tracert ftp telnet arp netstat
+keywords2=assoc ftype break verify ctty lock unlock truename print replace expand extract tree diskcopy
+keywords2=xcopy shutdown tasklist taskkill robocopy where cscript wscript msiexec timeout

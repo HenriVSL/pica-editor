@@ -37,11 +37,11 @@ Key choices: piece tree over the file's bytes (one document, text + hex views, o
 thread with temp + rename; backups in generation files and the session in two alternating files (no renames in the
 crash path); polling for changes (Mac-side edits on M: never notify); new files ANSI + CRLF without BOM.
 
-## Phase 3: build (next)
+## Phase 3: build (in progress, overnight 2026-11-09/10; user asked for autonomous completion)
 | Wave | Tasks | State |
 |---|---|---|
-| 0 | T00 skeleton: headers, stubs, Makefiles (VC6 + Mac), resources, test harness, app shell | planned |
-| 1 | T01 buffer, T02 codecs, T03 regex + search, T04 lexers, T05 file I/O, T06 layout/hex format/ini/session (core, Mac-tested) | planned |
+| 0 | T00 skeleton: headers, stubs, Makefiles (VC6 + Mac), resources, test harness, app shell | done (commit a2c2572) |
+| 1 | T01 buffer, T02 codecs, T03 regex + search, T04 lexers, T05 file I/O, T06 layout/hex format/ini/session (core, Mac-tested) | done (112,926 checks Mac + VC6) |
 | 2 | T07 frame, T08 text view, T09 files + document commands, T10 hex view, T11 search UI + find in files, T12 edit commands + dialogs | planned |
 | 3 | T13 session/backup/recovery, T14 disk events + large files, T15 selftest suite + shortcuts + help | planned |
 | 4 | T16 core QA, T17 win QA + performance, then T18 release (README, zip) | planned |

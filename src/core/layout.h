@@ -25,6 +25,9 @@ public:
   u32  cell_of_offset(u32 off) const;            // caret x
   u32  offset_of_cell(u32 cell, int nearest) const;  // hit test: nearest char boundary (or floor)
   int  wrap_rows(u32 width_cells, int word, Vec<u32>* row_starts) const;  // char indices where rows start (first 0)
+  // T06 addition: bytes actually laid out (< n when the input ended in an incomplete character with eof == 0,
+  // or when the 65535-glyph limit of LayChar.glyph was reached).
+  u32  bytes() const;
 private:                                         // private state: T06 may change freely
   Vec<LayChar> chars_; Vec<u16> glyphs_; u32 start_cell_; u32 end_cell_; u32 nbytes_;
   LineLayout(const LineLayout&); LineLayout& operator=(const LineLayout&);

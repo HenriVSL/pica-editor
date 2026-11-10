@@ -1,1 +1,51 @@
-; python.lng - Python language definition (placeholder from T00; T04 writes it)
+; python.lng - Python 2.x and 3.x. Format: see cpp.lng.
+; Triple-quoted strings span lines; r/b/u/f prefixes belong to the string; @decorators are PREPROC.
+[language]
+id=python
+name=Python
+extensions=py;pyw;pyi;wsgi
+names=sconstruct;sconscript
+case=1
+tab_width=4
+use_tabs=0
+braces=()[]{}
+comment=#
+line_comment=#
+string=""" """ \ multiline
+string=''' ''' \ multiline
+string=" " \
+string=' ' \
+string_prefixes=r u b f R U B F br rb Br bR BR Rb RB rB fr rf Fr fR FR Rf RF rF ur Ur uR UR
+decorator=@
+number=c
+operators=+-*/%=<>!&|^~:;,.()[]{}@
+
+; statements (2.x and 3.x; print/exec are keywords in 2.x)
+keywords1=and as assert async await break class continue def del elif else except exec finally for from global
+keywords1=if import in is lambda nonlocal not or pass print raise return try while with yield
+keywords1=True False None
+; built-in functions, types and constants
+keywords2=abs aiter all anext any apply ascii basestring bin bool breakpoint buffer bytearray bytes callable chr
+keywords2=classmethod cmp coerce compile complex copyright credits delattr dict dir divmod enumerate eval execfile
+keywords2=exit file filter float format frozenset getattr globals hasattr hash help hex id input int intern
+keywords2=isinstance issubclass iter len license list locals long map max memoryview min next object oct open
+keywords2=ord pow property quit range raw_input reduce reload repr reversed round set setattr slice sorted
+keywords2=staticmethod str sum super tuple type unichr unicode vars xrange zip __import__ NotImplemented Ellipsis
+keywords2=__debug__
+; exceptions, self/cls and common special names
+keywords3=self cls __init__ __new__ __del__ __repr__ __str__ __len__ __getitem__ __setitem__ __delitem__ __iter__
+keywords3=__next__ __contains__ __call__ __enter__ __exit__ __eq__ __ne__ __lt__ __le__ __gt__ __ge__ __hash__
+keywords3=__getattr__ __setattr__ __delattr__ __getattribute__ __name__ __main__ __file__ __doc__ __dict__
+keywords3=__class__ __slots__ __all__ __module__ __version__ __builtins__ __add__ __sub__ __mul__ __div__
+keywords3=__truediv__ __floordiv__ __mod__ __pow__ __neg__ __bool__ __nonzero__ __unicode__ __format__
+keywords3=BaseException Exception StandardError ArithmeticError AssertionError AttributeError BufferError
+keywords3=EOFError EnvironmentError FloatingPointError GeneratorExit IOError ImportError ModuleNotFoundError
+keywords3=IndentationError IndexError KeyError KeyboardInterrupt LookupError MemoryError NameError
+keywords3=NotImplementedError OSError OverflowError RecursionError ReferenceError RuntimeError StopIteration
+keywords3=StopAsyncIteration SyntaxError SystemError SystemExit TabError TypeError UnboundLocalError
+keywords3=UnicodeError UnicodeDecodeError UnicodeEncodeError UnicodeTranslateError ValueError WindowsError
+keywords3=ZeroDivisionError BlockingIOError ChildProcessError ConnectionError BrokenPipeError
+keywords3=ConnectionAbortedError ConnectionRefusedError ConnectionResetError FileExistsError FileNotFoundError
+keywords3=InterruptedError IsADirectoryError NotADirectoryError PermissionError ProcessLookupError TimeoutError
+keywords3=Warning UserWarning DeprecationWarning PendingDeprecationWarning SyntaxWarning RuntimeWarning
+keywords3=FutureWarning ImportWarning UnicodeWarning BytesWarning ResourceWarning

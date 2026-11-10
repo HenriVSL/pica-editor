@@ -1,1 +1,41 @@
-; html.lng - HTML language definition (placeholder from T00; T04 writes it)
+; html.lng - HTML 4.01 / XHTML (plus common HTML5 and legacy elements), hand-written lexer. Format: see cpp.lng.
+; keywords1 = known element names, keywords2 = known attribute names: other names are styled KEYWORD4 as a hint.
+; <script> bodies use the "js" language, <style> bodies the "css" language.
+[language]
+id=html
+name=HTML
+lexer=html
+extensions=htm;html;xhtml;xht;shtml;shtm;stm;hta;htt;asp;php;jsp
+case=0
+braces=<>{}()
+comment_block=<!-- -->
+script=js
+style=css
+
+; elements
+keywords1=a abbr acronym address applet area article aside audio b base basefont bdi bdo bgsound big blink
+keywords1=blockquote body br button canvas caption center cite code col colgroup data datalist dd del details
+keywords1=dfn dialog dir div dl dt em embed fieldset figcaption figure font footer form frame frameset h1 h2 h3
+keywords1=h4 h5 h6 head header hgroup hr html i iframe ilayer img input ins isindex kbd keygen label layer legend
+keywords1=li link listing main map mark marquee menu menuitem meta meter multicol nav nobr noembed noframes
+keywords1=nolayer noscript object ol optgroup option output p param picture plaintext pre progress q rb rp rt
+keywords1=rtc ruby s samp script section select server small source spacer span strike strong style sub summary
+keywords1=sup svg math table tbody td template textarea tfoot th thead time title tr track tt u ul var video wbr
+keywords1=xmp
+; attributes
+keywords2=abbr accept accept-charset accesskey action align alink alt archive autocomplete autofocus autoplay
+keywords2=axis background behavior bgcolor bgproperties border bordercolor bordercolordark bordercolorlight
+keywords2=cellpadding cellspacing char charoff charset checked cite class classid clear code codebase codetype
+keywords2=color cols colspan compact content contenteditable controls coords data datetime declare defer dir
+keywords2=direction disabled download draggable dynsrc enctype face for form frame frameborder headers height
+keywords2=hidden high href hreflang hspace http-equiv id ismap label lang language leftmargin link list loop low
+keywords2=longdesc lowsrc marginheight marginwidth max maxlength media method min multiple name nohref noresize
+keywords2=noshade nowrap object open optimum pattern placeholder poster preload profile prompt readonly rel
+keywords2=required rev role rows rowspan rules scheme scope scrollamount scrolldelay scrolling selected shape
+keywords2=size sizes span spellcheck src srcset standby start step style summary tabindex target text title
+keywords2=topmargin type usemap valign value valuetype version vlink vspace width wrap xmlns xml:lang
+keywords2=onabort onafterprint onbeforeprint onbeforeunload onblur oncanplay onchange onclick oncontextmenu
+keywords2=oncopy oncut ondblclick ondrag ondragend ondragenter ondragleave ondragover ondragstart ondrop
+keywords2=onerror onfocus onhashchange oninput oninvalid onkeydown onkeypress onkeyup onload onmessage
+keywords2=onmousedown onmouseenter onmouseleave onmousemove onmouseout onmouseover onmouseup onmousewheel
+keywords2=onpaste onreset onresize onscroll onselect onselectstart onsubmit onunload

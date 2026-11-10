@@ -24,7 +24,10 @@ public:
   void close();                          // before the rename sequence
   epos size() const;  const u8* get(epos off, epos* avail);  int err() const;  const char* path() const;
 private:                                 // private state: T05 may change freely
+  struct Slot { u8* p; u32 blk; u32 len; u32 stamp; };   // one cached 64 KB block; blk 0xFFFFFFFF = empty
   FileSys* fs_; FsFile f_; char path_[260]; u32 mode_; epos size_; int err_;
+  Slot* slots_; u32 nslots_; u32 stamp_; u32 last_;
+  void free_cache_();
   FileSource(const FileSource&); FileSource& operator=(const FileSource&);
 };
 struct IndexResult { Vec<u32> block_breaks; EolCounts eol; epos size; };
@@ -32,7 +35,8 @@ int  file_index(FileSys* fs, const char* path, const BreakSpec& bs, IndexResult*
 struct SaveOpts   { u8 keep_bak; u8 pad[3]; };
 // T00: after_replace's parameter name is commented out (unused parameter is an error under clang -Wextra -Werror).
 class SaveHooks   { public: virtual ~SaveHooks() {} virtual void before_replace() {} virtual void after_replace(const char* /*old_copy*/) {} };
-struct SaveResult { FsStat st; u8 in_place; u8 failed_step; u8 pad[2]; char temp[260]; char old_copy[260]; };
+struct SaveResult { FsStat st; u8 in_place; u8 failed_step; u8 pad[2]; char temp[260]; char old_copy[260];
+                    char stray[260]; };   // T05: stray = a ~P*.TMP file we may have left behind (could not delete it or tell)
 int  file_write_temp(FileSys* fs, const char* path, ByteSource* data, ProgressCb* cb, volatile i32* cancel, SaveResult* r);  // steps 1-3 (13.3), worker thread
 int  file_replace(FileSys* fs, const char* path, const SaveOpts& o, SaveHooks* hooks, SaveResult* r);   // steps 4-9, UI thread
 int  file_save(FileSys* fs, const char* path, ByteSource* data, const SaveOpts& o, SaveHooks* hooks, ProgressCb* cb, SaveResult* r); // both (tests, settings)

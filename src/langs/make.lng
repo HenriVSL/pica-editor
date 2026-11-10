@@ -1,1 +1,30 @@
-; make.lng - Makefile language definition (placeholder from T00; T04 writes it)
+; make.lng - NMAKE (VC6) and GNU make makefiles, VC6 .dsp projects. Format: see cpp.lng.
+; Column 0 "NAME = value" styles NAME as VARIABLE, "target: deps" styles the target as LABEL; !IF / !INCLUDE ...
+; lines are PREPROC; $(VAR), $@, $<, $** are VARIABLE. Recipes must start with a tab, so tabs are used for indent.
+[language]
+id=make
+name=Makefile
+extensions=mak;mk;make;nmake;dsp;mif
+names=makefile;makefile.*;gnumakefile;nmakefile;*.mak.in
+case=1
+use_tabs=1
+braces=()[]{}
+comment=#
+line_comment=#
+preprocessor=!
+variables=make
+make_rules=1
+number=c
+ident_start=A-Za-z_.
+ident_part=A-Za-z0-9_.-
+operators==:;|<>@()
+
+; GNU make directives (NMAKE directives start with ! and are PREPROC as a whole line)
+keywords1=include -include sinclude define endef ifdef ifndef ifeq ifneq else endif export unexport override
+keywords1=vpath private undefine
+; special targets
+keywords2=.PHONY .SUFFIXES .DEFAULT .PRECIOUS .INTERMEDIATE .SECONDARY .DELETE_ON_ERROR .IGNORE .SILENT
+keywords2=.EXPORT_ALL_VARIABLES .NOTPARALLEL .ONESHELL .POSIX .PRECIOUS
+; tools usually seen in recipes
+keywords3=cl link lib rc nmake mt midl bscmake cvtres dumpbin editbin ml masm nasm tasm tlink bcc32 gcc g++ cc
+keywords3=ld ar ranlib make echo del erase copy xcopy move ren mkdir md rmdir rd cd type if exist not
