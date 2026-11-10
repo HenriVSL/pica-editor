@@ -68,3 +68,21 @@ Known limits / open (details in docs/HANDOFF.md T16-T19):
 - Minor: tab-id counter never wraps (needs >1M tabs); config_store can't report out-of-memory.
 - Published 2026-11-10 (user approved): MIT licence (LICENSE, also in README.TXT), public repo HenriVSL/pica-editor,
   GitHub release v1.0 with the zip and setup.exe.
+
+## Handover (2026-11-10, session 86box-d1 closed)
+- **Pica 1.0 is released and complete**: public repo HenriVSL/pica-editor (MIT), GitHub release v1.0
+  (`pica-1.0-setup.exe` 937,984 bytes MD5 52d9914b..., `pica-1.0.zip` 401,470 bytes MD5 55d7917e...). Local git is in
+  sync with origin/main (last commit: licence + README download links + release target FORCE fix).
+- Nothing is in progress. No user feedback on Pica is pending beyond the T40 quick test that led to the installer.
+- **Rebuild a release**: `w98 build editor release`, `w98 build 'editor\setup' clean`, `w98 build 'editor\setup'`,
+  `tools/mkzip.sh` (checks README.TXT, writes zip + setup copy with MD5s). Then selftest:
+  `w98 run 'M:\dev\editor\release\Pica-1.0\pica.exe -selftest -cfg C:\PICATEST' -t 400 --show`, read
+  `C:\PICATEST\selftest.log` (expect 13 passed). Bump `res/appinfo.h` APP_VERSION/APP_VERSION_RC and `VER` in
+  `tools/gen_make.py` (then `python3 tools/gen_make.py`) for a new version.
+- **Orchestration rule from the user**: the overseer plans/reviews/verifies/commits; sub-agents (Opus, high effort)
+  do research and coding. Rules for agents: `docs/TASKS.md`; agents append notes to `docs/HANDOFF.md`.
+- **Spin-off**: the installer was generalised into **Setup98** (`dev/setup98`, public repo HenriVSL/setup98, see its
+  STATUS.md). The installer has a long-name bug that Setup98 fixed: a file with a long name that is in use comes
+  back as its 8.3 alias after the WININIT.INI restart. All Pica files are 8.3, so it's harmless here. A Pica 1.1
+  could switch to Setup98 (`setup98/examples/pica.ini`, takeover of 1.0 installs tested).
+- Post-1.0 ideas (not requested): the known limits above, macros, split view, Setup98 installer.
