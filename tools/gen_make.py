@@ -29,7 +29,7 @@ G['lex'] = G['ucd'] + ['lexer', 'lexgen', 'lexhtml', 'lexmd']
 G['regex'] = G['codec'] + ['regex', 'rxvm', 'rxbt', 'rxpre']
 G['search'] = G['regex'] + ['hexfmt', 'search']
 G['ini'] = G['base'] + ['ini']
-G['ed'] = G['doc'] + G['lex'] + ['docbind', 'edtype']
+G['ed'] = G['doc'] + G['lex'] + ['layout', 'docbind', 'edtype']   # edtype: tab stops via LineLayout
 
 FS = '@fs'          # fs_posix.cpp on the Mac, src/win/fs_win32.cpp on VC6
 
@@ -40,7 +40,7 @@ SUITES = [
     ('ptree', G['pt']),
     ('undo', G['pt'] + ['undo']),
     ('doc', G['doc']),
-    ('marks', G['doc'] + ['marks']),
+    ('marks', G['doc'] + ['marks'] + G['lex'] + ['docbind']),   # + DocLines test (T01_DOCBIND)
     ('codec', G['codec']),
     ('detect', G['detect']),
     ('ucd', G['ucd']),
@@ -119,7 +119,7 @@ def nmake():
     A('CFLAGS = /nologo /W3 /Zi /Od /G6 /MT /DWIN32 /D_WINDOWS /DE_DEBUG /Isrc\\core /Isrc\\win /Ires')
     A('LFLAGS = /nologo /debug')
     A('!ENDIF')
-    A('TCFLAGS = $(CFLAGS) /Itests')
+    A('TCFLAGS = $(CFLAGS) /Itests /DT01_DOCBIND')
     A('LIBS = user32.lib gdi32.lib kernel32.lib comctl32.lib comdlg32.lib shell32.lib advapi32.lib imm32.lib')
     A('TLIBS = kernel32.lib user32.lib')
     A('TRUN = -q -tmp C:\\PICATEST\\tmp -data tests\\data')
@@ -231,7 +231,7 @@ def gmake():
     A('#   make -C tests clean')
     A('CXX = clang++')
     A('WARN = -std=c++98 -pedantic -Wall -Wextra -Werror -Wshadow -fno-exceptions -fno-rtti')
-    A('CPPFLAGS = -DE_DEBUG -I../src/core -I. -MMD -MP')
+    A('CPPFLAGS = -DE_DEBUG -DT01_DOCBIND -I../src/core -I. -MMD -MP')
     A('OPT_strict = -O2')
     A('OPT_asan = -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all')
     A('LD_strict =')

@@ -21,6 +21,7 @@ EncSpec enc_ansi();  EncSpec enc_oem();
 EncSpec enc_utf8(int bom);  EncSpec enc_utf16le(int bom);  EncSpec enc_utf16be(int bom);
 EncSpec enc_cp(u16 cp);                        // SBCS or DBCS by code page
 const char* enc_label(const EncSpec& e, char* buf, u32 cap);  // status bar: "ANSI", "OEM", "UTF-8", "UTF-8 BOM", "UTF-16 LE", "Windows-1251"
+const char* enc_cp_name(u16 cp, char* buf, u32 cap);   // "Windows-1252", "OEM 866", "KOI8-R" (no ANSI/OEM alias)
 int     enc_parse(const char* token, EncSpec* out);           // ini tokens: ansi, oem, utf8, utf8bom, utf16le, utf16be, cp1251
 void    enc_token(const EncSpec& e, char* buf, u32 cap);
 u32     enc_bom(const EncSpec& e, u8* out);    // writes the BOM bytes (0, 2 or 3), returns length
@@ -49,7 +50,8 @@ public:
   virtual ecp decode_single(u8 b) const = 0;
   virtual u32 encode(ecp c, u8* out) const = 0;            // 0 if not representable
 };
-int codec_register_dbcs(u16 cp, DbcsProvider* p);         // provider not owned; must outlive all codecs
+int codec_register_dbcs(u16 cp, DbcsProvider* p);         // provider not owned; must outlive all codecs;
+                                                          // p == NULL unregisters; a provider without lead bytes acts as an SBCS code page
 // helpers
 u32  codec_decode_buf(const Codec* c, const u8* p, u32 n, int eof, ecp* out, u32 cap, u32* bytes_used);
 int  codec_encode_str(const Codec* c, const ecp* s, u32 n, EBytes* out, u32* unrepresentable, ecp subst);  // subst 0 = stop

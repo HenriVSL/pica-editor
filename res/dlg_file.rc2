@@ -1,12 +1,14 @@
-// dlg_file.rc2 - dialog templates. Placeholders from T00. Owner after Wave 0: T09. CRLF, ASCII.
+// dlg_file.rc2 - dialog templates of the File commands (T09). Owner after Wave 0: T09. CRLF, ASCII.
 
-// Save As template child (OFN_ENABLETEMPLATE | OFN_ENABLEHOOK): Encoding and Line endings combos (12.2)
-IDD_SAVEAS_EXTRA DIALOG DISCARDABLE 0, 0, 280, 22
+// Save As template child (OFN_EXPLORER | OFN_ENABLETEMPLATE | OFN_ENABLEHOOK): Encoding and Line endings combos
+// (DESIGN 12.2, 15.9). The common dialog places this below its own controls. The combos default to the document's
+// encoding / line endings; an encoding outside the five save encodings and mixed line endings get a "(keep)" entry.
+IDD_SAVEAS_EXTRA DIALOG DISCARDABLE 0, 0, 230, 40
 STYLE DS_3DLOOK | DS_CONTROL | WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS
 FONT 8, "MS Sans Serif"
 BEGIN
-    LTEXT           "&Encoding:",IDC_SAVEAS_ENC_LABEL,7,6,40,8
-    COMBOBOX        IDC_SAVEAS_ENC,50,4,90,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "&Line endings:",IDC_SAVEAS_EOL_LABEL,150,6,50,8
-    COMBOBOX        IDC_SAVEAS_EOL,202,4,70,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Encoding:",IDC_SAVEAS_ENC_LABEL,5,6,50,8
+    COMBOBOX        IDC_SAVEAS_ENC,61,4,120,90,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Line endings:",IDC_SAVEAS_EOL_LABEL,5,24,50,8
+    COMBOBOX        IDC_SAVEAS_EOL,61,22,120,70,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 END

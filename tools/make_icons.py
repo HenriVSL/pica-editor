@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Generate res/toolbar.bmp (15 buttons, 16x16 each, 16 colours, magenta = transparent) and res/pica.ico
-(32x32 + 16x16, 16 colours). Deterministic; writes 4-bpp files by hand (Pillow is only used for drawing).
-T00 placeholder art (simple shapes); T07 improves it.   python3 tools/make_icons.py
+(32x32 + 16x16, 16 colours). Deterministic; writes 4-bpp files by hand (no Pillow needed for the files).
+Art is hand-made pixel grids in the classic Win98 toolbar style (black outlines, VGA palette).
+
+    python3 tools/make_icons.py            writes res/toolbar.bmp and res/pica.ico
+    python3 tools/make_icons.py --preview  also writes docs/shots/t07_icons.png (8x zoom, needs Pillow)
 """
 import os
 import struct
-from PIL import Image, ImageDraw
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -13,122 +16,420 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAL = [(0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (128, 0, 128), (0, 128, 128),
        (192, 192, 192), (128, 128, 128), (255, 0, 0), (0, 255, 0), (255, 255, 0), (0, 0, 255), (255, 0, 255),
        (0, 255, 255), (255, 255, 255)]
-BLACK, MAROON, GREEN, OLIVE, NAVY, PURPLE, TEAL, SILVER, GRAY, RED, LIME, YELLOW, BLUE, MAGENTA, AQUA, WHITE = PAL
+# grid characters -> palette index ('.' = magenta = transparent)
+CH = {'k': 0, 'm': 1, 'g': 2, 'o': 3, 'n': 4, 'p': 5, 't': 6, 's': 7, 'G': 8, 'r': 9, 'l': 10, 'y': 11,
+      'b': 12, '.': 13, 'a': 14, 'w': 15}
+KEY = 13
 
-FONT3x5 = {  # tiny digits/letters for the hex button
-    '0': ['111', '101', '101', '101', '111'], 'F': ['111', '100', '110', '100', '100'],
-    '1': ['010', '110', '010', '010', '111'], 'A': ['010', '101', '111', '101', '101'],
+
+class Grid:
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.px = [[KEY] * w for _ in range(h)]
+
+    def set(self, x, y, c):
+        if 0 <= x < self.w and 0 <= y < self.h:
+            self.px[y][x] = CH[c] if isinstance(c, str) else c
+
+    def rect(self, x0, y0, x1, y1, fill=None, outline=None):
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                edge = x in (x0, x1) or y in (y0, y1)
+                if edge and outline:
+                    self.set(x, y, outline)
+                elif fill:
+                    self.set(x, y, fill)
+
+    def hline(self, x0, x1, y, c):
+        for x in range(x0, x1 + 1):
+            self.set(x, y, c)
+
+    def vline(self, x, y0, y1, c):
+        for y in range(y0, y1 + 1):
+            self.set(x, y, c)
+
+    def paste(self, rows, x0=0, y0=0):
+        """rows: list of strings; '.' cells are skipped (transparent overlay)."""
+        for y, row in enumerate(rows):
+            for x, ch in enumerate(row):
+                if ch != '.' and ch != ' ':
+                    self.set(x0 + x, y0 + y, ch)
+
+    def page(self, x0, y0, x1, y1, fold=3, lines=None, line_col='G'):
+        """White page with a black outline and a folded top-right corner; optional text lines."""
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if x > x1 - fold and y < y0 + fold and (x - (x1 - fold)) > (y - y0):
+                    continue                                   # cut corner
+                self.set(x, y, 'w')
+        self.hline(x0, x1 - fold, y0, 'k')
+        self.vline(x0, y0, y1, 'k')
+        self.hline(x0, x1, y1, 'k')
+        self.vline(x1, y0 + fold, y1, 'k')
+        for i in range(fold + 1):                              # diagonal of the fold
+            self.set(x1 - fold + i, y0 + i, 'k')
+        self.vline(x1 - fold, y0, y0 + fold, 'k')              # fold flap
+        self.hline(x1 - fold, x1, y0 + fold, 'k')
+        for i in range(1, fold):
+            for j in range(1, i + 1):
+                self.set(x1 - fold + j, y0 + i, 's')
+        if lines:
+            for (lx0, lx1, ly) in lines:
+                self.hline(lx0, lx1, ly, line_col)
+
+
+def btn_new():
+    g = Grid(16, 16)
+    g.page(3, 1, 12, 14, fold=4)
+    return g
+
+
+def btn_open():
+    g = Grid(16, 16)
+    g.paste([
+        "................",
+        "..........kkk...",
+        ".........k...k.k",
+        "..............kk",
+        ".kkk.........kkk",
+        "kyyykkkkkkk.....",
+        "kywywywywyk.....",
+        "kwywywykkkkkkkkk",
+        "kywywykoooooooko",
+        "kwywykoooooooko.",
+        "kywykoooooooko..",
+        "kwykoooooooko...",
+        "kykoooooooko....",
+        "kkkkkkkkkkk.....",
+        "................",
+        "................",
+    ])
+    # the front flap's outline: fix the stray pixels at the right end of rows 8-12
+    for y, x in ((8, 15), (9, 14), (10, 13), (11, 12), (12, 11)):
+        g.set(x, y, '.')
+    for y, x in ((8, 14), (9, 13), (10, 12), (11, 11), (12, 10)):
+        g.set(x, y, 'k')
+    return g
+
+
+FLOPPY16 = [
+    ".kkkkkkkkkkkkkk.",
+    ".knkwwwwwwwwknk.",
+    ".knkwwwwwwwwkkk.",
+    ".knkwwwwwwwwknk.",
+    ".knkwwwwwwwwknk.",
+    ".knkwwwwwwwwknk.",
+    ".knnkkkkkkkknnk.",
+    ".knnnnnnnnnnnnk.",
+    ".knnkkkkkkkknnk.",
+    ".knnksskksssnnk.",
+    ".knnksskksssnnk.",
+    ".knnksskksssnnk.",
+    ".kkkkkkkkkkkkkk.",
+]
+
+FLOPPY11 = [
+    "kkkkkkkkkkk",
+    "knkwwwwwknk",
+    "knkwwwwwkkk",
+    "knkwwwwwknk",
+    "knnkkkkknnk",
+    "knnnnnnnnnk",
+    "knnkkkkknnk",
+    "knnksksknnk",
+    "knnksksknnk",
+    "kkkkkkkkkkk",
+]
+
+
+def btn_save():
+    g = Grid(16, 16)
+    g.paste(FLOPPY16, 0, 1)
+    return g
+
+
+def btn_saveall():
+    g = Grid(16, 16)
+    back = [r.replace('n', 'p') for r in FLOPPY11]
+    g.paste(back, 0, 0)
+    # clear the area of the front floppy (so the back one doesn't show through its transparent parts)
+    g.rect(4, 5, 14, 14, fill='w')
+    g.paste(FLOPPY11, 4, 5)
+    g.vline(15, 5, 14, '.')
+    return g
+
+
+def btn_cut():
+    g = Grid(16, 16)
+    g.paste([
+        "................",
+        "....k......k....",
+        "....k......k....",
+        "....kk....kk....",
+        ".....k....k.....",
+        ".....kk..kk.....",
+        "......k..k......",
+        "......kkkk......",
+        ".......kk.......",
+        "......n..n......",
+        "...nnnn..nnnn...",
+        "..n...n..n...n..",
+        "..n...n..n...n..",
+        "..n...n..n...n..",
+        "...nnn....nnn...",
+        "................",
+    ])
+    return g
+
+
+def btn_copy():
+    g = Grid(16, 16)
+    g.page(0, 0, 8, 10, fold=3, lines=[(2, 4, 3), (2, 6, 5), (2, 6, 7)])
+    g.page(6, 4, 15, 15, fold=3, lines=[(8, 11, 7), (8, 13, 9), (8, 13, 11), (8, 12, 13)])
+    return g
+
+
+def btn_paste():
+    g = Grid(16, 16)
+    g.rect(1, 2, 11, 14, fill='o', outline='k')
+    g.rect(4, 1, 8, 3, fill='s', outline='k')
+    g.page(6, 6, 15, 15, fold=3, lines=[(8, 11, 9), (8, 13, 11), (8, 12, 13)])
+    return g
+
+
+UNDO = [
+    "................",
+    "................",
+    "................",
+    "......nnnnn.....",
+    "....nnnnnnnnn...",
+    "...nnn.....nnn..",
+    "..nn........nn..",
+    "nnnnnn......nnn.",
+    ".nnnn........nn.",
+    "..nn.........nn.",
+    "...........nnn..",
+    ".........nnnn...",
+    ".........nnn....",
+    "................",
+    "................",
+    "................",
+]
+
+
+def btn_undo():
+    g = Grid(16, 16)
+    g.paste(UNDO)
+    return g
+
+
+def btn_redo():
+    g = Grid(16, 16)
+    g.paste([r[::-1] for r in UNDO])
+    return g
+
+
+MAGNIFIER = [
+    "...kkkkk...",
+    "..kwwwwwk..",
+    ".kwwaaawwk.",
+    ".kwaawwwwk.",
+    ".kwawwwwwk.",
+    ".kwwwwwwwk.",
+    ".kwwwwwwwk.",
+    "..kwwwwwkk.",
+    "...kkkkkmmk",
+]
+
+
+def magnifier(g, x, y, handle=4):
+    g.paste(MAGNIFIER, x, y)
+    for i in range(handle):
+        g.set(x + 9 + i, y + 8 + i, 'm')
+        g.set(x + 10 + i, y + 8 + i, 'm')
+        g.set(x + 9 + i, y + 9 + i, 'k')
+        g.set(x + 11 + i, y + 8 + i, 'k')
+
+
+def btn_find():
+    g = Grid(16, 16)
+    magnifier(g, 0, 1, handle=5)
+    return g
+
+
+def btn_replace():
+    g = Grid(16, 16)
+    g.page(0, 0, 9, 13, fold=3, lines=[(2, 5, 3), (2, 7, 5), (2, 7, 7), (2, 6, 9), (2, 7, 11)])
+    # red pencil from bottom-left to top-right
+    g.paste([
+        "..........kk",
+        ".........kyrk",
+        "........kyyrk",
+        ".......kyyrk.",
+        "......kyyrk..",
+        ".....kyyrk...",
+        "....kyyrk....",
+        "....kwrk.....",
+        "....kkk......",
+    ], 3, 6)
+    return g
+
+
+def btn_fif():
+    g = Grid(16, 16)
+    g.paste([
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        ".kkkk...........",
+        "kyyyykkkkkk.....",
+        "kywywywywyk.....",
+        "kwywywywywk.....",
+        "kywywywywyk.....",
+        "kwywywywywk.....",
+        "kywywywywyk.....",
+        "kwywywywywk.....",
+        "kkkkkkkkkkk.....",
+        "................",
+        "................",
+    ])
+    magnifier(g, 5, 0, handle=3)
+    return g
+
+
+FONT3x5 = {
+    '0': ['111', '101', '101', '101', '111'], '1': ['010', '110', '010', '010', '111'],
+    'A': ['010', '101', '111', '101', '101'], 'F': ['111', '100', '110', '100', '100'],
+    '3': ['111', '001', '011', '001', '111'], '7': ['111', '001', '010', '010', '010'],
+    'C': ['111', '100', '100', '100', '111'], '4': ['101', '101', '111', '001', '001'],
 }
 
 
-def text3x5(d, x, y, s, col):
+def text3x5(g, x, y, s, col):
     for ch in s:
         for r, row in enumerate(FONT3x5[ch]):
             for c, bit in enumerate(row):
                 if bit == '1':
-                    d.point((x + c, y + r), fill=col)
+                    g.set(x + c, y + r, col)
         x += 4
 
 
-def page(d, x0, y0, x1, y1, fold=3):
-    d.polygon([(x0, y0), (x1 - fold, y0), (x1, y0 + fold), (x1, y1), (x0, y1)], fill=WHITE, outline=GRAY)
-    d.line([(x1 - fold, y0), (x1 - fold, y0 + fold), (x1, y0 + fold)], fill=GRAY)
+def btn_hexview():
+    g = Grid(16, 16)
+    g.rect(0, 0, 15, 15, fill='w', outline='k')
+    g.hline(1, 14, 1, 'n')
+    g.hline(1, 14, 2, 'n')
+    text3x5(g, 2, 4, '0F', 'n')
+    text3x5(g, 2, 10, 'A3', 'n')
+    g.vline(10, 4, 14, 's')
+    text3x5(g, 12, 4, '1', 'r')
+    text3x5(g, 12, 10, '4', 'g')
+    return g
 
 
-def floppy(d, x, y, body=NAVY):
-    d.rectangle([x, y, x + 11, y + 11], fill=body)
-    d.rectangle([x + 2, y, x + 9, y + 4], fill=SILVER)
-    d.rectangle([x + 7, y + 1, x + 8, y + 3], fill=body)
-    d.rectangle([x + 2, y + 7, x + 9, y + 11], fill=WHITE)
+def btn_wrap():
+    g = Grid(16, 16)
+    g.hline(1, 13, 3, 'k')
+    g.hline(1, 10, 6, 'k')
+    g.hline(1, 6, 13, 'k')
+    # wrap arrow: from the end of line 2 right, down, and back left into line 3
+    g.hline(11, 13, 6, 'b')
+    g.vline(14, 7, 9, 'b')
+    g.set(13, 6, 'b'); g.set(14, 6, '.')
+    g.hline(5, 13, 10, 'b')
+    g.set(14, 10, '.')
+    g.paste([
+        "..b...",
+        ".bb...",
+        "bbbbbb",
+        ".bb...",
+        "..b...",
+    ], 1, 8)
+    g.hline(7, 13, 10, 'b')
+    return g
 
 
-def magnifier(d, x, y, glass=AQUA):
-    d.ellipse([x, y, x + 7, y + 7], fill=glass, outline=BLACK)
-    d.line([(x + 7, y + 7), (x + 10, y + 10)], fill=BLACK, width=2)
-
-
-def arrow(d, right):
-    if right:
-        d.arc([2, 4, 12, 14], 180, 360, fill=BLUE, width=2)
-        d.polygon([(10, 9), (14, 9), (12, 12)], fill=BLUE)
-    else:
-        d.arc([3, 4, 13, 14], 180, 360, fill=BLUE, width=2)
-        d.polygon([(1, 9), (5, 9), (3, 12)], fill=BLUE)
+def btn_showws():
+    g = Grid(16, 16)
+    g.paste([
+        "................",
+        "....bbbbbbbbb...",
+        "...bbbbbbb..b...",
+        "..bbbbbbbb..b...",
+        "..bbbbbbbb..b...",
+        "..bbbbbbbb..b...",
+        "...bbbbbbb..b...",
+        "....bbbbbb..b...",
+        ".......bbb..b...",
+        ".......bbb..b...",
+        ".......bbb..b...",
+        ".......bbb..b...",
+        ".......bbb..b...",
+        ".......bbb..b...",
+        "......bbbbbbbb..",
+        "................",
+    ])
+    # keep it a classic one-colour pilcrow: thin second stem
+    for y in range(2, 14):
+        g.set(11, y, '.')
+        g.set(12, y, 'b')
+    return g
 
 
 def buttons():
-    imgs = []
-    for i in range(15):
-        im = Image.new('RGB', (16, 16), MAGENTA)
-        d = ImageDraw.Draw(im)
-        if i == 0:      # New
-            page(d, 3, 1, 12, 14)
-        elif i == 1:    # Open
-            d.rectangle([1, 4, 7, 6], fill=OLIVE)
-            d.rectangle([1, 6, 14, 13], fill=YELLOW, outline=OLIVE)
-        elif i == 2:    # Save
-            floppy(d, 2, 2)
-        elif i == 3:    # Save All
-            floppy(d, 0, 0, PURPLE)
-            floppy(d, 4, 4)
-        elif i == 4:    # Cut
-            d.ellipse([2, 9, 6, 13], outline=BLACK)
-            d.ellipse([9, 9, 13, 13], outline=BLACK)
-            d.line([(5, 9), (10, 2)], fill=BLACK)
-            d.line([(10, 9), (5, 2)], fill=BLACK)
-        elif i == 5:    # Copy
-            page(d, 1, 1, 9, 11)
-            page(d, 6, 4, 14, 14)
-        elif i == 6:    # Paste
-            d.rectangle([2, 2, 12, 14], fill=OLIVE)
-            d.rectangle([5, 1, 9, 3], fill=SILVER, outline=BLACK)
-            page(d, 6, 6, 14, 15, 2)
-        elif i == 7:    # Undo
-            arrow(d, False)
-        elif i == 8:    # Redo
-            arrow(d, True)
-        elif i == 9:    # Find
-            magnifier(d, 2, 2)
-        elif i == 10:   # Replace
-            page(d, 1, 1, 10, 14)
-            d.line([(3, 5), (8, 5)], fill=GRAY)
-            d.line([(3, 8), (8, 8)], fill=GRAY)
-            d.line([(8, 14), (14, 6)], fill=RED, width=2)
-        elif i == 11:   # Find in Files
-            d.rectangle([0, 6, 11, 14], fill=YELLOW, outline=OLIVE)
-            magnifier(d, 5, 1)
-        elif i == 12:   # Hex view
-            d.rectangle([0, 3, 15, 12], fill=WHITE, outline=NAVY)
-            text3x5(d, 1, 5, '0F', NAVY)
-            text3x5(d, 9, 5, 'A1', RED)
-        elif i == 13:   # Word wrap
-            for yy in (3, 7):
-                d.line([(1, yy), (13, yy)], fill=BLACK)
-            d.line([(13, 7), (13, 11)], fill=BLUE)
-            d.line([(13, 11), (5, 11)], fill=BLUE)
-            d.polygon([(4, 11), (7, 8), (7, 14)], fill=BLUE)
-        elif i == 14:   # Show whitespace (pilcrow)
-            d.ellipse([3, 2, 9, 8], fill=BLACK)
-            d.line([(8, 2), (8, 14)], fill=BLACK)
-            d.line([(11, 2), (11, 14)], fill=BLACK)
-            d.line([(8, 2), (13, 2)], fill=BLACK)
-        imgs.append(im)
-    return imgs
+    return [btn_new(), btn_open(), btn_save(), btn_saveall(), btn_cut(), btn_copy(), btn_paste(), btn_undo(),
+            btn_redo(), btn_find(), btn_replace(), btn_fif(), btn_hexview(), btn_wrap(), btn_showws()]
 
 
-def to_indices(im):
-    w, h = im.size
-    px = im.load()
-    out = []
-    for y in range(h):
-        row = []
-        for x in range(w):
-            c = px[x, y]
-            best = min(range(16), key=lambda k: sum((a - b) ** 2 for a, b in zip(PAL[k], c)))
-            row.append(best)
-        out.append(row)
-    return out
+def icon32():
+    g = Grid(32, 32)
+    g.page(4, 1, 27, 30, fold=6)
+    # text lines (left), hex bytes (right): "one document, two views"
+    for i, y in enumerate(range(6, 16, 3)):
+        g.hline(7, 7 + (9 if i % 3 else 6), y, 'G')
+    g.vline(18, 9, 27, 's')
+    text3x5(g, 20, 9, '0F', 'n')
+    text3x5(g, 20, 15, 'A3', 'n')
+    text3x5(g, 20, 21, '10', 'r')
+    # big navy "P" badge in the lower left
+    g.rect(1, 17, 13, 31, fill='n', outline='k')
+    g.paste([
+        "wwwwww.",
+        "ww...ww",
+        "ww...ww",
+        "ww...ww",
+        "wwwwww.",
+        "ww.....",
+        "ww.....",
+        "ww.....",
+        "ww.....",
+    ], 4, 20)
+    return g
 
+
+def icon16():
+    g = Grid(16, 16)
+    g.page(3, 0, 15, 15, fold=4, lines=[(5, 8, 3), (5, 10, 5)])
+    g.vline(10, 8, 13, 's')
+    g.hline(11, 13, 9, 'n')
+    g.hline(11, 13, 11, 'r')
+    g.hline(11, 13, 13, 'n')
+    g.rect(0, 7, 8, 15, fill='n', outline='k')
+    g.paste([
+        "wwww.",
+        "w...w",
+        "w...w",
+        "wwww.",
+        "w....",
+        "w....",
+        "w....",
+    ], 2, 8)
+    return g
+
+
+# ---- file writers ----
 
 def pack4(row):
     b = bytearray()
@@ -156,31 +457,9 @@ def write_bmp4(path, idx):
         f.write(hdr + info + palette_bytes() + rows)
 
 
-def icon_image(size):
-    im = Image.new('RGB', (size, size), MAGENTA)
-    d = ImageDraw.Draw(im)
-    if size == 32:
-        page(d, 4, 1, 27, 30, 6)
-        d.rectangle([4, 1, 21, 6], fill=NAVY)
-        for yy in range(10, 28, 4):
-            d.line([(8, yy), (14, yy)], fill=GRAY)
-        d.rectangle([16, 10, 18, 26], fill=RED)            # big "P"
-        d.rectangle([16, 10, 23, 12], fill=RED)
-        d.rectangle([22, 10, 24, 18], fill=RED)
-        d.rectangle([16, 17, 23, 19], fill=RED)
-    else:
-        page(d, 2, 0, 13, 15, 3)
-        d.rectangle([2, 0, 10, 2], fill=NAVY)
-        d.rectangle([7, 5, 8, 13], fill=RED)
-        d.rectangle([7, 5, 11, 6], fill=RED)
-        d.rectangle([11, 5, 12, 9], fill=RED)
-        d.rectangle([7, 9, 11, 10], fill=RED)
-    return im
-
-
-def ico_entry(im):
-    idx = to_indices(im)
-    size = len(idx)
+def ico_entry(g):
+    idx = g.px
+    size = g.w
     mask_rows = []
     xor_idx = []
     for r in idx:
@@ -188,7 +467,7 @@ def ico_entry(im):
         mrow = bytearray()
         xr = []
         for x, k in enumerate(r):
-            transparent = (k == 13)   # magenta
+            transparent = (k == KEY)
             xr.append(0 if transparent else k)
             bits = (bits << 1) | (1 if transparent else 0)
             if x % 8 == 7:
@@ -204,8 +483,8 @@ def ico_entry(im):
     return size, info + palette_bytes() + xor + andm
 
 
-def write_ico(path, images):
-    entries = [ico_entry(im) for im in images]
+def write_ico(path, grids):
+    entries = [ico_entry(g) for g in grids]
     off = 6 + 16 * len(entries)
     out = struct.pack('<HHH', 0, 1, len(entries))
     data = b''
@@ -216,13 +495,53 @@ def write_ico(path, images):
         f.write(out + data)
 
 
+def preview(path, btns, icons):
+    from PIL import Image
+    z = 8
+    face = (192, 192, 192)
+    w = (16 * 15 + 14 * 4 + 8) * z // 2
+    img = Image.new('RGB', (max(w, 1300), 16 * z + 40 * z // 2 + 300), face)
+    px = img.load()
+
+    def blit(g, ox, oy, zoom):
+        for y in range(g.h):
+            for x in range(g.w):
+                k = g.px[y][x]
+                col = face if k == KEY else PAL[k]
+                for yy in range(zoom):
+                    for xx in range(zoom):
+                        px[ox + x * zoom + xx, oy + y * zoom + yy] = col
+    x = 4
+    for g in btns:
+        blit(g, x, 4, 5)
+        x += 16 * 5 + 6
+    # 1:1 strip as it appears on screen
+    x = 4
+    for g in btns:
+        blit(g, x, 100, 1)
+        x += 23
+    blit(icons[0], 4, 130, 5)
+    blit(icons[1], 180, 130, 5)
+    blit(icons[0], 280, 130, 1)
+    blit(icons[1], 320, 130, 1)
+    img.save(path)
+
+
 def main():
-    strip = Image.new('RGB', (16 * 15, 16), MAGENTA)
-    for i, im in enumerate(buttons()):
-        strip.paste(im, (16 * i, 0))
-    write_bmp4(os.path.join(ROOT, 'res', 'toolbar.bmp'), to_indices(strip))
-    write_ico(os.path.join(ROOT, 'res', 'pica.ico'), [icon_image(32), icon_image(16)])
+    btns = buttons()
+    strip = [[KEY] * (16 * 15) for _ in range(16)]
+    for i, g in enumerate(btns):
+        for y in range(16):
+            for x in range(16):
+                strip[y][16 * i + x] = g.px[y][x]
+    write_bmp4(os.path.join(ROOT, 'res', 'toolbar.bmp'), strip)
+    icons = [icon32(), icon16()]
+    write_ico(os.path.join(ROOT, 'res', 'pica.ico'), icons)
     print('wrote res/toolbar.bmp and res/pica.ico')
+    if '--preview' in sys.argv:
+        out = os.path.join(ROOT, 'docs', 'shots', 't07_icons.png')
+        preview(out, btns, icons)
+        print('wrote', out)
 
 
 if __name__ == '__main__':

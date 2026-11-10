@@ -11,7 +11,7 @@ LFLAGS = /nologo
 CFLAGS = /nologo /W3 /Zi /Od /G6 /MT /DWIN32 /D_WINDOWS /DE_DEBUG /Isrc\core /Isrc\win /Ires
 LFLAGS = /nologo /debug
 !ENDIF
-TCFLAGS = $(CFLAGS) /Itests
+TCFLAGS = $(CFLAGS) /Itests /DT01_DOCBIND
 LIBS = user32.lib gdi32.lib kernel32.lib comctl32.lib comdlg32.lib shell32.lib advapi32.lib imm32.lib
 TLIBS = kernel32.lib user32.lib
 TRUN = -q -tmp C:\PICATEST\tmp -data tests\data
@@ -133,7 +133,8 @@ obj\tm_doc.obj: tests\t_main.cpp tests\tf.h src\core\*.h
 	cl $(TCFLAGS) /DTF_SUITE=doc /c /Foobj\tm_doc.obj tests\t_main.cpp
 
 SU_MARKS = obj\etypes.obj obj\emem.obj obj\estr.obj obj\esource.obj obj\ptree.obj obj\undo.obj obj\ucd.obj \
-        obj\ucdtables.obj obj\codec.obj obj\cptables.obj obj\detect.obj obj\doc.obj obj\marks.obj
+        obj\ucdtables.obj obj\codec.obj obj\cptables.obj obj\detect.obj obj\doc.obj obj\marks.obj \
+        obj\lexer.obj obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\docbind.obj
 t_marks: obj\t_marks.exe
 	obj\t_marks.exe $(TRUN)
 obj\t_marks.exe: $(SU_MARKS) obj\tm_marks.obj obj\t_marks.obj
@@ -244,7 +245,7 @@ obj\tm_hexfmt.obj: tests\t_main.cpp tests\tf.h src\core\*.h
 
 SU_EDTYPE = obj\etypes.obj obj\emem.obj obj\estr.obj obj\esource.obj obj\ptree.obj obj\undo.obj obj\ucd.obj \
         obj\ucdtables.obj obj\codec.obj obj\cptables.obj obj\detect.obj obj\doc.obj obj\lexer.obj \
-        obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\docbind.obj obj\edtype.obj
+        obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\layout.obj obj\docbind.obj obj\edtype.obj
 t_edtype: obj\t_edtype.exe
 	obj\t_edtype.exe $(TRUN)
 obj\t_edtype.exe: $(SU_EDTYPE) obj\tm_edtype.obj obj\t_edtype.obj
@@ -256,7 +257,8 @@ obj\tm_edtype.obj: tests\t_main.cpp tests\tf.h src\core\*.h
 
 SU_EDLINES = obj\etypes.obj obj\emem.obj obj\estr.obj obj\esource.obj obj\ptree.obj obj\undo.obj obj\ucd.obj \
         obj\ucdtables.obj obj\codec.obj obj\cptables.obj obj\detect.obj obj\doc.obj obj\lexer.obj \
-        obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\docbind.obj obj\edtype.obj obj\edlines.obj
+        obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\layout.obj obj\docbind.obj obj\edtype.obj \
+        obj\edlines.obj
 t_edlines: obj\t_edlines.exe
 	obj\t_edlines.exe $(TRUN)
 obj\t_edlines.exe: $(SU_EDLINES) obj\tm_edlines.obj obj\t_edlines.obj
@@ -268,7 +270,8 @@ obj\tm_edlines.obj: tests\t_main.cpp tests\tf.h src\core\*.h
 
 SU_EDHEX = obj\etypes.obj obj\emem.obj obj\estr.obj obj\esource.obj obj\ptree.obj obj\undo.obj obj\ucd.obj \
         obj\ucdtables.obj obj\codec.obj obj\cptables.obj obj\detect.obj obj\doc.obj obj\lexer.obj \
-        obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\docbind.obj obj\edtype.obj obj\edhex.obj
+        obj\lexgen.obj obj\lexhtml.obj obj\lexmd.obj obj\layout.obj obj\docbind.obj obj\edtype.obj \
+        obj\edhex.obj
 t_edhex: obj\t_edhex.exe
 	obj\t_edhex.exe $(TRUN)
 obj\t_edhex.exe: $(SU_EDHEX) obj\tm_edhex.obj obj\t_edhex.obj

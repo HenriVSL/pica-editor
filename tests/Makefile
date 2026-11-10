@@ -6,7 +6,7 @@
 #   make -C tests clean
 CXX = clang++
 WARN = -std=c++98 -pedantic -Wall -Wextra -Werror -Wshadow -fno-exceptions -fno-rtti
-CPPFLAGS = -DE_DEBUG -I../src/core -I. -MMD -MP
+CPPFLAGS = -DE_DEBUG -DT01_DOCBIND -I../src/core -I. -MMD -MP
 OPT_strict = -O2
 OPT_asan = -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all
 LD_strict =
@@ -192,7 +192,9 @@ $(B)/su_doc/asan:
 
 SU_marks = ../src/core/etypes.cpp ../src/core/emem.cpp ../src/core/estr.cpp ../src/core/esource.cpp ../src/core/ptree.cpp \
          ../src/core/undo.cpp ../src/core/ucd.cpp ../src/core/ucdtables.cpp ../src/core/codec.cpp \
-         ../src/core/cptables.cpp ../src/core/detect.cpp ../src/core/doc.cpp ../src/core/marks.cpp t_marks.cpp
+         ../src/core/cptables.cpp ../src/core/detect.cpp ../src/core/doc.cpp ../src/core/marks.cpp \
+         ../src/core/lexer.cpp ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp \
+         ../src/core/docbind.cpp t_marks.cpp
 marks: $(B)/su_marks/strict/t_marks $(B)/su_marks/asan/t_marks
 	$(B)/su_marks/strict/t_marks $(RUN)
 	$(B)/su_marks/asan/t_marks $(RUN)
@@ -463,8 +465,8 @@ $(B)/su_hexfmt/asan:
 SU_edtype = ../src/core/etypes.cpp ../src/core/emem.cpp ../src/core/estr.cpp ../src/core/esource.cpp ../src/core/ptree.cpp \
          ../src/core/undo.cpp ../src/core/ucd.cpp ../src/core/ucdtables.cpp ../src/core/codec.cpp \
          ../src/core/cptables.cpp ../src/core/detect.cpp ../src/core/doc.cpp ../src/core/lexer.cpp \
-         ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp ../src/core/docbind.cpp \
-         ../src/core/edtype.cpp t_edtype.cpp
+         ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp ../src/core/layout.cpp \
+         ../src/core/docbind.cpp ../src/core/edtype.cpp t_edtype.cpp
 edtype: $(B)/su_edtype/strict/t_edtype $(B)/su_edtype/asan/t_edtype
 	$(B)/su_edtype/strict/t_edtype $(RUN)
 	$(B)/su_edtype/asan/t_edtype $(RUN)
@@ -492,8 +494,8 @@ $(B)/su_edtype/asan:
 SU_edlines = ../src/core/etypes.cpp ../src/core/emem.cpp ../src/core/estr.cpp ../src/core/esource.cpp ../src/core/ptree.cpp \
          ../src/core/undo.cpp ../src/core/ucd.cpp ../src/core/ucdtables.cpp ../src/core/codec.cpp \
          ../src/core/cptables.cpp ../src/core/detect.cpp ../src/core/doc.cpp ../src/core/lexer.cpp \
-         ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp ../src/core/docbind.cpp \
-         ../src/core/edtype.cpp ../src/core/edlines.cpp t_edlines.cpp
+         ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp ../src/core/layout.cpp \
+         ../src/core/docbind.cpp ../src/core/edtype.cpp ../src/core/edlines.cpp t_edlines.cpp
 edlines: $(B)/su_edlines/strict/t_edlines $(B)/su_edlines/asan/t_edlines
 	$(B)/su_edlines/strict/t_edlines $(RUN)
 	$(B)/su_edlines/asan/t_edlines $(RUN)
@@ -521,8 +523,8 @@ $(B)/su_edlines/asan:
 SU_edhex = ../src/core/etypes.cpp ../src/core/emem.cpp ../src/core/estr.cpp ../src/core/esource.cpp ../src/core/ptree.cpp \
          ../src/core/undo.cpp ../src/core/ucd.cpp ../src/core/ucdtables.cpp ../src/core/codec.cpp \
          ../src/core/cptables.cpp ../src/core/detect.cpp ../src/core/doc.cpp ../src/core/lexer.cpp \
-         ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp ../src/core/docbind.cpp \
-         ../src/core/edtype.cpp ../src/core/edhex.cpp t_edhex.cpp
+         ../src/core/lexgen.cpp ../src/core/lexhtml.cpp ../src/core/lexmd.cpp ../src/core/layout.cpp \
+         ../src/core/docbind.cpp ../src/core/edtype.cpp ../src/core/edhex.cpp t_edhex.cpp
 edhex: $(B)/su_edhex/strict/t_edhex $(B)/su_edhex/asan/t_edhex
 	$(B)/su_edhex/strict/t_edhex $(RUN)
 	$(B)/su_edhex/asan/t_edhex $(RUN)
